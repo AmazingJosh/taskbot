@@ -1,7 +1,7 @@
-const { detectIntent } = require("../../services/intentEngine");
-const { routeTask } = require("../../routes/taskRouter");
-const { findOrCreateUser } = require("../../models/userModels");
-const { logTask } = require("../../models/taskModel");
+const { detectIntent } = require("../services/intentEngine");
+const { routeTask } = require("../routes/taskRouter");
+const { findOrCreateUser } = require("../models/userModels");
+const { logTask } = require("../models/taskModel");
 
 const handleUpdate = async (bot, update) => {
   // Only handle messages for now

@@ -1,5 +1,5 @@
 const axios = require("axios");
-const cloudinary = require("../src/config/cloudinary");
+const cloudinary = require("../config/cloudinary");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
