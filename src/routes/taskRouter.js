@@ -1,6 +1,6 @@
 const { removeBackground } = require("../tasks/backgroundRemoval");
 // const { compressPDF } = require("../tasks/pdfCompress");
-// const { transcribeAudio } = require("../../tasks/transcription");
+const { transcribeAudio } = require("../tasks/transcription");
 // const { translateText } = require("../../tasks/translation");
 // const { textToSpeech } = require("../../tasks/textToSpeech");
 // const { getWeather } = require("../../tasks/weather");
