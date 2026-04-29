@@ -1,7 +1,7 @@
 const { detectIntent } = require("../services/intentEngine");
 const { routeTask } = require("../routes/taskRouter");
 const { findOrCreateUser } = require("../models/userModels");
-const { logTask } = require("../models/TaskModel");
+const { logTask } = require("../models/taskModel");
 
 /**
  * Smart pre-router — runs BEFORE Gemini.
