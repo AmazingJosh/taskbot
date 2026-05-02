@@ -1,16 +1,16 @@
 const axios = require("axios");
-const { encodeURIComponent: encode } = global;
 
 const API_KEY = process.env.POLLINATIONS_API_KEY;
-const BASE_IMAGE = "https://image.pollinations.ai/prompt";
+const BASE_URL = "https://image.pollinations.ai/prompt";
 
 /**
- * Pollinations.ai utility
- * Registered Seed tier — no watermarks, 1 req/5s rate limit
+ * Pollinations.ai utility — confirmed from official docs
  * 
- * Two modes:
- * 1. generateImage(prompt, opts) — text to image (FLUX model)
- * 2. transformImage(imageUrl, prompt, opts) — image to image (Kontext model)
+ * generateImage  → text to image (FLUX model)
+ * transformImage → image to image (Kontext model, Seed tier required)
+ * 
+ * Key fix: build URL with URLSearchParams exactly as docs show,
+ * not axios params object which can mangle the image URL param.
  */
 
 /**
@@ -22,28 +22,29 @@ const generateImage = async (prompt, opts = {}) => {
     width = 1024,
     height = 1024,
     model = "flux",
-    enhance = true,
+    enhance = false,
     seed = Math.floor(Math.random() * 999999),
   } = opts;
 
-  const encodedPrompt = encodeURIComponent(prompt);
-  const url = `${BASE_IMAGE}/${encodedPrompt}`;
-
-  const params = {
+  const params = new URLSearchParams({
     width,
     height,
     model,
-    enhance,
     seed,
     nologo: true,
     private: true,
+    ...(enhance && { enhance: true }),
     ...(API_KEY && { key: API_KEY }),
-  };
+  });
+
+  const url = `${BASE_URL}/${encodeURIComponent(prompt)}?${params}`;
+
+  console.log("🎨 Pollinations generateImage URL:", url);
 
   const response = await axios.get(url, {
-    params,
     responseType: "arraybuffer",
-    timeout: 60000,
+    timeout: 120000,
+    headers: API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {},
   });
 
   return Buffer.from(response.data);
@@ -51,7 +52,7 @@ const generateImage = async (prompt, opts = {}) => {
 
 /**
  * Transform an existing image using a text instruction.
- * Uses the Kontext model (image-to-image).
+ * Uses Kontext model — requires Seed tier (registered account).
  * Returns transformed image as Buffer.
  */
 const transformImage = async (imageUrl, prompt, opts = {}) => {
@@ -61,24 +62,26 @@ const transformImage = async (imageUrl, prompt, opts = {}) => {
     seed = Math.floor(Math.random() * 999999),
   } = opts;
 
-  const encodedPrompt = encodeURIComponent(prompt);
-  const url = `${BASE_IMAGE}/${encodedPrompt}`;
-
-  const params = {
+  // Build URL exactly as Pollinations docs show
+  const params = new URLSearchParams({
+    model: "kontext",
+    image: imageUrl,
     width,
     height,
-    model: "kontext",           // image-to-image model
-    image: imageUrl,            // source image URL
+    seed,
     nologo: true,
     private: true,
-    seed,
     ...(API_KEY && { key: API_KEY }),
-  };
+  });
+
+  const url = `${BASE_URL}/${encodeURIComponent(prompt)}?${params}`;
+
+  console.log("🎨 Pollinations transformImage URL:", url.substring(0, 120) + "...");
 
   const response = await axios.get(url, {
-    params,
     responseType: "arraybuffer",
-    timeout: 90000,             // Kontext can take longer
+    timeout: 120000,
+    headers: API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {},
   });
 
   return Buffer.from(response.data);
