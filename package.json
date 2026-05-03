@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node test.js",
     "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,6 +13,8 @@
   "description": "AI-powered Telegram task bot",
   "dependencies": {
     "@google/generative-ai": "^0.15.0",
+    "@ilovepdf/ilovepdf-nodejs": "^0.3.1",
+    "assemblyai": "^4.0.0",
     "axios": "^1.15.2",
     "cloudinary": "^2.0.0",
     "dotenv": "^17.4.2",
@@ -20,9 +22,7 @@
     "form-data": "^4.0.5",
     "mongoose": "^8.0.0",
     "multer": "^2.1.1",
-    "node-telegram-bot-api": "^0.64.0",
-    "assemblyai": "^4.0.0"
-
+    "node-telegram-bot-api": "^0.64.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
