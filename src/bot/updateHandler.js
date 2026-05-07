@@ -16,6 +16,25 @@ const {
  * Saves Gemini API calls for genuinely ambiguous messages.
  */
 
+ const preRoute = (msg) => {
+  if (msg.voice || msg.audio) {
+    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.video || msg.video_note) {
+    const caption = (msg.caption || "").toLowerCase();
+    if (caption.includes("gif") || caption.includes("convert")) return null;
+    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.photo && !msg.caption) {
+    return { task: "background_removal", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.document && msg.document.mime_type === "application/pdf" && !msg.caption) {
+    return { task: "pdf_compress", requires_file: true, params: {}, confidence: "high" };
+  }
+  return null;
+};
+
+
 const handleUpdate = async (bot, update) => {
   // ── Handle inline keyboard button taps ──────────────
   if (update.callback_query) {
@@ -60,32 +79,18 @@ if (msg.text === "/start") {
   }
 
 
-  const preRoute = (msg) => {
-  if (msg.voice || msg.audio) {
-    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
-  }
-  if (msg.video || msg.video_note) {
-    const caption = (msg.caption || "").toLowerCase();
-    if (caption.includes("gif") || caption.includes("convert")) return null;
-    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
-  }
-  if (msg.photo && !msg.caption) {
-    return { task: "background_removal", requires_file: true, params: {}, confidence: "high" };
-  }
-  if (msg.document && msg.document.mime_type === "application/pdf" && !msg.caption) {
-    return { task: "pdf_compress", requires_file: true, params: {}, confidence: "high" };
-  }
-  return null;
-};
+ 
 
   // ── Check active session ─────────────────────────────
-  const session = getSession(userId);
+   const session = getSession(userId);
 
-  /**
-   * Session-based routing — user tapped a menu button earlier,
-   * now they're sending the input we asked for.
-   * Skip Gemini entirely — we already know the task.
-   */
+  // Session: waiting for resize dimensions  ← MUST BE HERE, outside other blocks
+  if (session?.step === "waiting_for_resize_dimensions" && msg.text) {
+    const { handleResizeDimensionsInput } = require("../tasks/imageResize");
+    await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
+    return;
+  }
+
   if (session?.step === "waiting_for_task_input") {
     // Validate they sent the right type of input
     const needsPhoto = ["background_removal", "background_blur", "background_swap",
