@@ -101,6 +101,7 @@ const DOCS_MENU = {
 const TASK_PROMPTS = {
   background_removal: "✂️ *Remove Background*\n\nSend me the photo!",
   background_blur:    "🌀 *Blur Background*\n\nSend me the photo and I'll blur the background keeping you sharp!",
+  image_resize: '📐 *Resize Image*\n\nSend me the image!\n\nYou can:\n• Add dimensions in caption: "586x342"\n• Or name a platform: "instagram post", "passport", "linkedin banner"',
   pdf_compress:       "📦 *Compress PDF*\n\nSend me the PDF file!",
   pdf_to_word:        "📝 *PDF → Word*\n\nSend me the PDF to convert to an editable Word document!",
   office_to_pdf:      "📄 *Office → PDF*\n\nSend me a Word (.docx), Excel (.xlsx) or PowerPoint (.pptx) file!",

@@ -1,9 +1,10 @@
-const { removeBackground } = require("../tasks/backgroundRemoval");
-const { blurBackground } = require("../tasks/backgroundBlur");
-const { swapBackground } = require("../tasks/backgroundSwap");
-const { imageTransform } = require("../tasks/imageTransform");
-const { generateMeme } = require("../tasks/memeGenerator");
-const { transcribeAudio } = require("../tasks/transcription");
+const { removeBackground } = require('../tasks/backgroundRemoval');
+const { blurBackground } = require('../tasks/backgroundBlur');
+const { swapBackground } = require('../tasks/backgroundSwap');
+const { imageTransform } = require('../tasks/imageTransform');
+const { generateMeme } = require('../tasks/memeGenerator');
+const { imageResize } = require('../tasks/imageResizer');
+const { transcribeAudio } = require('../tasks/transcription');
 const {
   compressPDF,
   pdfToWord,
@@ -54,6 +55,9 @@ const routeTask = async (bot, chatId, msg, intent) => {
       return await generateMeme(bot, chatId, msg, params);
 
     // ── Transcription ─────────────────────────────────
+    case 'image_resize':
+      return await imageResize(bot, chatId, msg, params);
+
     case 'transcription':
       return await transcribeAudio(bot, chatId, msg);
 
