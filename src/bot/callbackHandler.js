@@ -39,6 +39,15 @@ const handleCallback = async (bot, callbackQuery) => {
     });
   }
 
+// ── Resize mode selected ──────────────────────────
+  if (data.startsWith("resize_")) {
+    const { handleResizeCallback } = require("../tasks/imageResize");
+    return handleResizeCallback(bot, callbackQuery);
+  }
+
+  // ── Task selected ─────────────────────────────────
+  if (data.startsWith("task_")) {
+
   // ── Task selected ─────────────────────────────────
   if (data.startsWith("task_")) {
     const taskName = data.replace("task_", "");
