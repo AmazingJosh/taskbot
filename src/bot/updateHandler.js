@@ -123,6 +123,7 @@ if (msg.text === "/start") {
       confidence: "high",
     };
     // Session: waiting for resize dimensions
+// Session: waiting for resize dimensions
 if (session?.step === "waiting_for_resize_dimensions" && msg.text) {
   const { handleResizeDimensionsInput } = require("../tasks/imageResize");
   await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
