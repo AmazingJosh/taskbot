@@ -12,48 +12,26 @@ app.get("/", (req, res) => res.json({ status: "TaskBot is alive 🤖" }));
 
 app.get("/test-sharp", async (req, res) => {
   try {
+    console.log("🔧 Sharp test starting...");
     const sharp = require('sharp');
     const axios = require('axios');
 
-    // Download a test image
+    console.log("📥 Downloading image...");
     const response = await axios.get(
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/PNG_transparency_demonstration_1.png/280px-PNG_transparency_demonstration_1.png',
+      'https://res.cloudinary.com/dd0jpkzai/image/upload/v1777744581/taskbot/transform/file_3_ewniqo.jpg',
       { responseType: 'arraybuffer' }
     );
+    console.log("✅ Image downloaded, size:", response.data.byteLength);
 
-    // Resize to exact 586x342 with smart crop
+    console.log("✂️ Resizing with Sharp...");
     const resized = await sharp(Buffer.from(response.data))
       .resize(586, 342, { fit: 'cover', position: 'center' })
       .jpeg({ quality: 95 })
       .toBuffer();
+    console.log("✅ Resized successfully");
 
-    res.json({
-      success: true,
-      originalSize: response.data.byteLength,
-      resizedSize: resized.length,
-      dimensions: '586x342',
-    });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-app.get("/test-sharp", async (req, res) => {
-  try {
-    const sharp = require('sharp');
-    const axios = require('axios');
-
-    const response = await axios.get(
-      'https://picsum.photos/1200/800.jpg',
-      { responseType: 'arraybuffer' }
-    );
-
-    const resized = await sharp(Buffer.from(response.data))
-      .resize(586, 342, { fit: 'cover', position: 'center' })
-      .jpeg({ quality: 95 })
-      .toBuffer();
-
-    // Get metadata to confirm dimensions
     const meta = await sharp(resized).metadata();
+    console.log("📐 Final dimensions:", meta.width, "x", meta.height);
 
     res.json({
       success: true,
@@ -63,9 +41,11 @@ app.get("/test-sharp", async (req, res) => {
       height: meta.height,
     });
   } catch (err) {
+    console.error("❌ Sharp test error:", err.message);
     res.json({ success: false, error: err.message });
   }
 });
+
 
 
 // ── Telegram webhook route ────────────────────────────
