@@ -37,7 +37,35 @@ app.get("/test-sharp", async (req, res) => {
     res.json({ success: false, error: err.message });
   }
 });
+app.get("/test-sharp", async (req, res) => {
+  try {
+    const sharp = require('sharp');
+    const axios = require('axios');
 
+    const response = await axios.get(
+      'https://picsum.photos/1200/800.jpg',
+      { responseType: 'arraybuffer' }
+    );
+
+    const resized = await sharp(Buffer.from(response.data))
+      .resize(586, 342, { fit: 'cover', position: 'center' })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    // Get metadata to confirm dimensions
+    const meta = await sharp(resized).metadata();
+
+    res.json({
+      success: true,
+      originalSize: response.data.byteLength,
+      resizedSize: resized.length,
+      width: meta.width,
+      height: meta.height,
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
 
 
 // ── Telegram webhook route ────────────────────────────
