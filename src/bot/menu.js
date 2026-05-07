@@ -56,6 +56,7 @@ const MAIN_MENU = {
         { text: "🌀 Blur Background",   callback_data: "task_background_blur"    },
       ],
       [
+        { text: "📐 Resize Image",      callback_data: "task_image_resize"       },
         { text: "📄 PDF Tools",         callback_data: "menu_docs"               },
       ],
       [

@@ -5,8 +5,11 @@ const { findOrCreateUser } = require("../models/userModels");
 const { logTask } = require("../models/taskModel");
 const { getSession, clearSession } = require("../helpers/sessionStore");
 const { handleCallback } = require("./callbackHandler");
-const { MAIN_MENU } = require("./menu");
-
+const { 
+  MAIN_MENU, 
+  WELCOME_MESSAGE, 
+  MENU_MESSAGE 
+} = require("./menu");
 /**
  * Smart pre-router — runs BEFORE Gemini.
  * Catches obvious intents purely from file type.
@@ -29,25 +32,23 @@ const handleUpdate = async (bot, update) => {
   await findOrCreateUser({ telegramId: userId, username, platform: "telegram" });
 
   // ── /start ───────────────────────────────────────────
-  if (msg.text === "/start") {
-    await bot.sendMessage(
-      chatId,
-      `👋 Hey ${username}! I'm *TaskBot* 🤖\n\nI can literally do any thing you want at just a click...Just relax i am cooking many more features😊.\n\nTap a category below to get started — or just tell me what you need!`,
-      { parse_mode: "Markdown", ...MAIN_MENU }
-    );
-    return;
-  }
+if (msg.text === "/start") {
+  await bot.sendMessage(
+    chatId,
+    WELCOME_MESSAGE.replace("{name}", username),
+    { parse_mode: "Markdown", ...MAIN_MENU }
+  );
+  return;
+}
 
-  // ── /menu ────────────────────────────────────────────
-  if (msg.text === "/menu") {
-    await bot.sendMessage(
-      chatId,
-      "🤖 *TaskBot Menu* — what do you need?",
-      { parse_mode: "Markdown", ...MAIN_MENU }
-    );
-    return;
-  }
-
+ if (msg.text === "/menu") {
+  await bot.sendMessage(
+    chatId,
+    MENU_MESSAGE,
+    { parse_mode: "Markdown", ...MAIN_MENU }
+  );
+  return;
+}
   // ── /help ────────────────────────────────────────────
   if (msg.text === "/help") {
     await bot.sendMessage(
@@ -57,6 +58,25 @@ const handleUpdate = async (bot, update) => {
     );
     return;
   }
+
+
+  const preRoute = (msg) => {
+  if (msg.voice || msg.audio) {
+    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.video || msg.video_note) {
+    const caption = (msg.caption || "").toLowerCase();
+    if (caption.includes("gif") || caption.includes("convert")) return null;
+    return { task: "transcription", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.photo && !msg.caption) {
+    return { task: "background_removal", requires_file: true, params: {}, confidence: "high" };
+  }
+  if (msg.document && msg.document.mime_type === "application/pdf" && !msg.caption) {
+    return { task: "pdf_compress", requires_file: true, params: {}, confidence: "high" };
+  }
+  return null;
+};
 
   // ── Check active session ─────────────────────────────
   const session = getSession(userId);
@@ -102,6 +122,12 @@ const handleUpdate = async (bot, update) => {
       },
       confidence: "high",
     };
+    // Session: waiting for resize dimensions
+if (session?.step === "waiting_for_resize_dimensions" && msg.text) {
+  const { handleResizeDimensionsInput } = require("../tasks/imageResize");
+  await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
+  return;
+}
 
     clearSession(userId); // Clear before routing (task handler sets new session if needed)
 
