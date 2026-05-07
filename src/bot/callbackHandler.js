@@ -7,7 +7,6 @@ const {
   TASK_PROMPTS,
 } = require("./menu");
 const { setSession } = require("../helpers/sessionStore");
-import { imageResize } from "../tasks/imageResizer";
 const handleCallback = async (bot, callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const userId = callbackQuery.from.id;
