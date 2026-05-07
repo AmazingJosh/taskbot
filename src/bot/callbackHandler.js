@@ -41,7 +41,7 @@ const handleCallback = async (bot, callbackQuery) => {
 
   // ── Resize mode selected ──────────────────────────
   if (data.startsWith("resize_")) {
-    const { handleResizeCallback } = require("../tasks/imageResize");
+    const { handleResizeCallback } = require("../tasks/imageResizer");
     return handleResizeCallback(bot, callbackQuery);
   }
 
