@@ -125,7 +125,7 @@ if (msg.text === "/start") {
     // Session: waiting for resize dimensions
 // Session: waiting for resize dimensions
 if (session?.step === "waiting_for_resize_dimensions" && msg.text) {
-  const { handleResizeDimensionsInput } = require("../tasks/imageResize");
+  const { handleResizeDimensionsInput } = require("../tasks/imageResizer");
   await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
   return;
 }
