@@ -3,27 +3,6 @@ const axios = require('axios');
 const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fileHelper');
 const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
 
-/**
- * Image Resize — Smart scaling with Sharp.js
- * 
- * Two modes:
- * 
- * 1. SCALE TO FIT — "My Lambo problem"
- *    Shrink/enlarge the ENTIRE image proportionally.
- *    Nothing cut. Nothing distorted. Just smaller or bigger.
- *    Result may not be exact target size but proportions perfect.
- *    e.g. 4000x3000 → 500x375 for WhatsApp
- * 
- * 2. EXACT WITH BLUR FILL — "Website requires exact size"
- *    Scale image to fit, then fill remaining edges with
- *    a blurred version of the same photo.
- *    Result is EXACTLY the target size. Looks professional.
- *    e.g. 4000x3000 → exactly 500x500 with blurred sides
- */
-
-// ─────────────────────────────────────────────────────
-// Platform presets
-// ─────────────────────────────────────────────────────
 const PRESETS = {
   'whatsapp dp':         { width: 500,  height: 500,  label: 'WhatsApp DP'         },
   'whatsapp':            { width: 500,  height: 500,  label: 'WhatsApp DP'         },
@@ -59,50 +38,57 @@ const detectPreset = (text = '') => {
   return null;
 };
 
-// ─────────────────────────────────────────────────────
-// MODE 1: Scale to fit — entire image visible, proportional
-// ─────────────────────────────────────────────────────
+/**
+ * MODE 1: Scale to fit
+ * Shrinks/enlarges entire image proportionally to fit within target.
+ * Nothing cut. Nothing distorted.
+ * Result may not be exact target size if aspect ratios differ.
+ */
 const scaleToFit = async (imageBuffer, targetWidth, targetHeight) => {
   return sharp(imageBuffer)
     .resize(targetWidth, targetHeight, {
-      fit: 'inside',           // shrink/enlarge to fit within bounds
-      withoutEnlargement: false, // allow enlargement if needed
+      fit: 'inside',
+      withoutEnlargement: false,
     })
     .jpeg({ quality: 95 })
     .toBuffer();
 };
 
-// ─────────────────────────────────────────────────────
-// MODE 2: Exact size with blur fill — professional look
-// ─────────────────────────────────────────────────────
+/**
+ * MODE 2: Exact size with blur fill
+ * 
+ * The full image is ALWAYS visible — nothing cut.
+ * The remaining space around it is filled with a blurred
+ * version of the same photo. Result is exactly target size.
+ * 
+ * This is how Instagram handles portrait photos in square frames.
+ */
 const exactWithBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
-  // Step 1: Create blurred background at exact target size
+  // Step 1: Create blurred background — scaled to cover entire target
   const blurredBg = await sharp(imageBuffer)
     .resize(targetWidth, targetHeight, {
-      fit: 'cover',   // fill the entire background
+      fit: 'cover',
       position: 'center',
     })
-    .blur(20)         // heavy blur
-    .brightness(0.7)  // slightly darken so subject stands out
+    .blur(25)
+    .modulate({ brightness: 0.6 })  // ← correct Sharp API for brightness
     .jpeg({ quality: 80 })
     .toBuffer();
 
-  // Step 2: Scale the original image to fit inside target (nothing cut)
-  const scaledForeground = await sharp(imageBuffer)
+  // Step 2: Scale original to fit inside target — entire image visible, nothing cut
+  const scaledFg = await sharp(imageBuffer)
     .resize(targetWidth, targetHeight, {
       fit: 'inside',
       withoutEnlargement: false,
     })
+    .png()  // keep as PNG for transparency-safe compositing
     .toBuffer();
 
-  // Get dimensions of scaled foreground
-  const meta = await sharp(scaledForeground).metadata();
-
-  // Step 3: Composite — place scaled image centered on blurred background
+  // Step 3: Composite — place full image centered on blurred background
   const result = await sharp(blurredBg)
     .composite([{
-      input: scaledForeground,
-      gravity: 'center',      // center the image on the background
+      input: scaledFg,
+      gravity: 'center',
     }])
     .jpeg({ quality: 95 })
     .toBuffer();
@@ -110,27 +96,21 @@ const exactWithBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
   return result;
 };
 
-// ─────────────────────────────────────────────────────
-// Mode selection keyboard
-// ─────────────────────────────────────────────────────
 const MODE_KEYBOARD = (width, height) => ({
   reply_markup: {
     inline_keyboard: [
       [{
-        text: '🔍 Scale to fit (nothing cut)',
+        text: '🔍 Scale to fit (nothing cut, may not be exact size)',
         callback_data: `resize_fit_${width}_${height}`,
       }],
       [{
-        text: '🖼 Exact size with blur fill (professional)',
+        text: '🖼 Full image + blur fill (exact size, looks pro)',
         callback_data: `resize_blur_${width}_${height}`,
       }],
     ],
   },
 });
 
-// ─────────────────────────────────────────────────────
-// Main handler
-// ─────────────────────────────────────────────────────
 const imageResize = async (bot, chatId, msg, params = {}) => {
   const userId  = msg.from.id;
   const photo   = msg.photo?.[msg.photo.length - 1] ||
@@ -140,30 +120,22 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
   if (!photo) {
     await bot.sendMessage(
       chatId,
-      '🖼 *Image Resize*\n\nSend me the image!\n\nAdd the size in caption:\n• *"whatsapp dp"*\n• *"instagram post"*\n• *"passport"*\n• *"1200x630"* (custom size)',
+      '🖼 *Image Resize*\n\nSend me the image with the target size in caption!\n\nExamples:\n• Photo + *"whatsapp dp"*\n• Photo + *"instagram post"*\n• Photo + *"1200x630"*',
       { parse_mode: 'Markdown' }
     );
     return { success: true };
   }
 
-  // Detect dimensions or preset
   let width, height, label;
-
   const dims = parseDimensions(caption);
   if (dims) {
-    width = dims.width;
-    height = dims.height;
-    label = `${width}x${height}`;
+    width = dims.width; height = dims.height; label = `${width}x${height}`;
   } else {
     const preset = detectPreset(caption);
-    if (preset) {
-      width  = preset.width;
-      height = preset.height;
-      label  = preset.label;
-    }
+    if (preset) { width = preset.width; height = preset.height; label = preset.label; }
   }
 
-  // No dimensions — upload photo, ask for size
+  // No size detected — save photo, ask for size
   if (!width || !height) {
     const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/resize');
     setSession(userId, {
@@ -179,36 +151,31 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
 
     await bot.sendMessage(
       chatId,
-      `📐 *What size do you need?*\n\n*Presets:*\n${presetList}\n\n*Or type custom:* "586x342"`,
+      `📐 *What size do you need?*\n\n*Presets:*\n${presetList}\n\n*Or type custom:* "1200x630"`,
       { parse_mode: 'Markdown' }
     );
     return { success: true };
   }
 
-  // We have dimensions — upload and show mode options
+  // We have size — show options
   const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/resize');
   setSession(userId, {
     step: 'waiting_for_resize_mode',
     imageUrl: upload.url,
     publicId: upload.publicId,
     resourceType: upload.resourceType,
-    width,
-    height,
-    label,
+    width, height, label,
   });
 
   await bot.sendMessage(
     chatId,
-    `📐 *${label}* — how do you want it?\n\n🔍 *Scale to fit* — your whole image stays, just smaller/bigger. Nothing cut.\n\n🖼 *Exact with blur fill* — exact dimensions, edges filled with blurred version of your photo. Looks pro.`,
+    `📐 *${label}* — pick how you want it:\n\n🔍 *Scale to fit* — your whole image, just smaller/bigger. Nothing cut. Size may differ slightly if shapes don't match.\n\n🖼 *Full image + blur fill* — your whole image visible, remaining space filled with blurred version. Exactly ${width}×${height}. Looks professional.`,
     { parse_mode: 'Markdown', ...MODE_KEYBOARD(width, height) }
   );
 
   return { success: true };
 };
 
-// ─────────────────────────────────────────────────────
-// Handle mode button tap
-// ─────────────────────────────────────────────────────
 const handleResizeCallback = async (bot, callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const userId = callbackQuery.from.id;
@@ -216,13 +183,12 @@ const handleResizeCallback = async (bot, callbackQuery) => {
 
   await bot.answerCallbackQuery(callbackQuery.id);
 
-  // data format: resize_fit_500_500 or resize_blur_500_500
   const parts  = data.split('_');
-  const mode   = parts[1];              // fit | blur
+  const mode   = parts[1];           // fit | blur
   const width  = parseInt(parts[2]);
   const height = parseInt(parts[3]);
 
-  console.log(`📐 Resize: mode=${mode} ${width}x${height}`);
+  console.log(`📐 Resize callback: mode=${mode} ${width}x${height}`);
 
   const session = getSession(userId);
   if (!session?.imageUrl) {
@@ -230,21 +196,12 @@ const handleResizeCallback = async (bot, callbackQuery) => {
     return;
   }
 
-  const modeLabel = mode === 'fit'
-    ? 'Scale to fit'
-    : 'Exact with blur fill';
-
-  await bot.sendMessage(
-    chatId,
-    `⚙️ Resizing (${modeLabel})... give me a second!`
-  );
+  await bot.sendMessage(chatId, `⚙️ Resizing... give me a second!`);
 
   try {
-    console.log(`📥 Downloading image...`);
     const response = await axios.get(session.imageUrl, { responseType: 'arraybuffer' });
     const inputBuffer = Buffer.from(response.data);
 
-    // Get original dimensions for the caption
     const original = await sharp(inputBuffer).metadata();
     console.log(`✅ Original: ${original.width}x${original.height}`);
 
@@ -259,12 +216,10 @@ const handleResizeCallback = async (bot, callbackQuery) => {
     console.log(`✅ Result: ${meta.width}x${meta.height}`);
 
     const caption = mode === 'fit'
-      ? `✅ Done! Scaled from ${original.width}×${original.height} → ${meta.width}×${meta.height}\n\nYour full image, nothing cut! 🎯`
-      : `✅ Done! Exactly ${meta.width}×${meta.height} with blur fill 🎯`;
+      ? `✅ Scaled from ${original.width}×${original.height} → ${meta.width}×${meta.height}\nYour full image — nothing cut! 🎯`
+      : `✅ Exactly ${meta.width}×${meta.height} with blur fill\nYour full image — nothing cut! 🎯`;
 
-    await bot.sendDocument(chatId, resized, {
-      caption,
-    }, {
+    await bot.sendDocument(chatId, resized, { caption }, {
       filename: `resized_${meta.width}x${meta.height}.jpg`,
       contentType: 'image/jpeg',
     });
@@ -279,9 +234,6 @@ const handleResizeCallback = async (bot, callbackQuery) => {
   }
 };
 
-// ─────────────────────────────────────────────────────
-// Handle text input for dimensions
-// ─────────────────────────────────────────────────────
 const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
   const session = getSession(userId);
   if (!session?.imageUrl) {
@@ -290,25 +242,18 @@ const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
   }
 
   let width, height, label;
-
   const dims = parseDimensions(text);
   if (dims) {
-    width  = dims.width;
-    height = dims.height;
-    label  = `${width}x${height}`;
+    width = dims.width; height = dims.height; label = `${width}x${height}`;
   } else {
     const preset = detectPreset(text);
-    if (preset) {
-      width  = preset.width;
-      height = preset.height;
-      label  = preset.label;
-    }
+    if (preset) { width = preset.width; height = preset.height; label = preset.label; }
   }
 
   if (!width || !height) {
     await bot.sendMessage(
       chatId,
-      `❓ Didn't get that. Try:\n• *"whatsapp dp"*\n• *"instagram post"*\n• *"500x500"*`,
+      `❓ Didn't get that. Try *"whatsapp dp"*, *"instagram post"*, or *"500x500"*`,
       { parse_mode: 'Markdown' }
     );
     return;
@@ -318,7 +263,7 @@ const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
 
   await bot.sendMessage(
     chatId,
-    `📐 *${label}* — how do you want it?\n\n🔍 *Scale to fit* — your whole image stays, just smaller/bigger. Nothing cut.\n\n🖼 *Exact with blur fill* — exact dimensions, edges filled with blurred version of your photo. Looks pro.`,
+    `📐 *${label}* — pick how you want it:\n\n🔍 *Scale to fit* — your whole image, just smaller/bigger. Nothing cut.\n\n🖼 *Full image + blur fill* — your whole image visible, remaining space filled with blurred version. Exactly ${width}×${height}.`,
     { parse_mode: 'Markdown', ...MODE_KEYBOARD(width, height) }
   );
 };
