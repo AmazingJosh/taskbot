@@ -6,20 +6,12 @@ const { getSession, clearSession, setLastTask, getLastTask } = require("../helpe
 const { handleCallback } = require("./callbackHandler");
 const { MAIN_MENU, WELCOME_MESSAGE, MENU_MESSAGE } = require("./menu");
 
-/**
- * Pre-router — catches obvious intents from file type alone.
- * BUT respects last task context — if user was resizing,
- * sending another photo means resize again, not remove bg.
- */
 const preRoute = (msg, lastTaskContext) => {
   const lastTask = lastTaskContext?.lastTask;
 
-  // If last task was resize and user sends photo → resize again
   if (lastTask === 'image_resize' && msg.photo) {
     return { task: 'image_resize', requires_file: true, params: {}, confidence: 'high' };
   }
-
-  // Standard pre-routing
   if (msg.voice || msg.audio) {
     return { task: 'transcription', requires_file: true, params: {}, confidence: 'high' };
   }
@@ -67,14 +59,14 @@ const handleUpdate = async (bot, update) => {
   if (msg.text === '/help') {
     return bot.sendMessage(
       chatId,
-      `*How to use LifeBot* 🛠\n\n*Option 1 — Tap the menu:*\nType /menu and tap any button\n\n*Option 2 — Just send a file:*\n• Send a photo → removes background\n• Send a PDF → compresses it\n• Send a Word file → converts to PDF\n\n*Option 3 — Tell me what you need:*\n• "Remove the background from this"\n• "Resize this to whatsapp dp"\n• "Compress this PDF"\n\nNo exact commands needed!`,
+      `*How to use LifeBot* 🛠\n\n*Option 1 — Tap the menu:*\nType /menu and tap any button\n\n*Option 2 — Just send a file:*\n• Send a photo → removes background\n• Send a PDF → compresses it\n\n*Option 3 — Tell me what you need:*\n• "Resize this to whatsapp dp"\n• "Remove background from this"\n• "Compress this PDF"\n\nNo exact commands needed!`,
       { parse_mode: 'Markdown' }
     );
   }
 
-  // ── Session check ─────────────────────────────────────
-  const session = getSession(userId);
-  const lastTaskContext = getLastTask(userId);
+  // ── Session check (all async now — survives restarts) ─
+  const session         = await getSession(userId);
+  const lastTaskContext = await getLastTask(userId);
 
   // Resize: waiting for dimensions text input
   if (session?.step === 'waiting_for_resize_dimensions' && msg.text) {
@@ -83,7 +75,7 @@ const handleUpdate = async (bot, update) => {
     return;
   }
 
-  // Resize: user sends another photo while in resize context — start resize flow
+  // Resize: user sends another photo while waiting for dimensions
   if (session?.step === 'waiting_for_resize_dimensions' && msg.photo) {
     const { imageResize } = require('../tasks/imageResize');
     await imageResize(bot, chatId, msg, {});
@@ -156,12 +148,11 @@ const handleUpdate = async (bot, update) => {
       confidence: 'high',
     };
 
-    if (!isMerge) clearSession(userId);
+    if (!isMerge) await clearSession(userId);
 
     try {
       const result = await routeTask(bot, chatId, msg, intent);
-      // Save last task context for smarter future routing
-      setLastTask(userId, intent.task);
+      await setLastTask(userId, intent.task);
       await logTask({
         userId,
         platform: 'telegram',
@@ -180,10 +171,8 @@ const handleUpdate = async (bot, update) => {
   await bot.sendMessage(chatId, '⚙️ On it...');
 
   try {
-    // Pre-router uses last task context for smarter defaults
     let intent = preRoute(msg, lastTaskContext);
 
-    // Gemini fallback — pass last task context so it understands the flow
     if (!intent) {
       intent = await detectIntent(msg, lastTaskContext);
     }
@@ -192,8 +181,7 @@ const handleUpdate = async (bot, update) => {
 
     const result = await routeTask(bot, chatId, msg, intent);
 
-    // Save last task so next message has context
-    setLastTask(userId, intent.task);
+    await setLastTask(userId, intent.task);
 
     await logTask({
       userId,

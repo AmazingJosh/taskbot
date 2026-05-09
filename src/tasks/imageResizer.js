@@ -3,6 +3,11 @@ const axios = require('axios');
 const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fileHelper');
 const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
 
+/**
+ * Image Resize — powered by Sharp.js
+ * One smart mode: full image visible + blur fill for exact size.
+ */
+
 const PRESETS = {
   'whatsapp dp':         { width: 500,  height: 500,  label: 'WhatsApp DP'         },
   'whatsapp':            { width: 500,  height: 500,  label: 'WhatsApp DP'         },
@@ -24,32 +29,6 @@ const PRESETS = {
   'banner':              { width: 1200, height: 400,  label: 'Web Banner'          },
 };
 
-/**
- * CORE LOGIC: Exact size with blur fill
- * Keeps original image fully visible, fills gaps with blurred background.
- */
-const processBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
-  // 1. Create blurred background (Cover)
-  const blurredBg = await sharp(imageBuffer)
-    .resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' })
-    .blur(25)
-    .modulate({ brightness: 0.5 }) 
-    .jpeg({ quality: 80 })
-    .toBuffer();
-
-  // 2. Scale original image (Inside)
-  const scaledFg = await sharp(imageBuffer)
-    .resize(targetWidth, targetHeight, { fit: 'inside', withoutEnlargement: false })
-    .png() // PNG preserves edge quality for compositing
-    .toBuffer();
-
-  // 3. Merge
-  return await sharp(blurredBg)
-    .composite([{ input: scaledFg, gravity: 'center' }])
-    .jpeg({ quality: 95 })
-    .toBuffer();
-};
-
 const parseDimensions = (text = '') => {
   const match = text.match(/(\d+)\s*[xX×*]\s*(\d+)/);
   if (match) return { width: parseInt(match[1]), height: parseInt(match[2]) };
@@ -65,81 +44,177 @@ const detectPreset = (text = '') => {
 };
 
 /**
- * MAIN ENTRY POINT
+ * Core resize — full image visible, exact target size.
+ * Step 1: blurred background at exact target size
+ * Step 2: scale full original to fit inside target (nothing cut)
+ * Step 3: composite full image centered on blurred background
+ */
+const resizeWithBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
+  const blurredBg = await sharp(imageBuffer)
+    .resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' })
+    .blur(25)
+    .modulate({ brightness: 0.6 })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  const scaledFg = await sharp(imageBuffer)
+    .resize(targetWidth, targetHeight, { fit: 'inside', withoutEnlargement: false })
+    .png()
+    .toBuffer();
+
+  return sharp(blurredBg)
+    .composite([{ input: scaledFg, gravity: 'center' }])
+    .jpeg({ quality: 95 })
+    .toBuffer();
+};
+
+/**
+ * Execute resize and send result to user
+ */
+const executeResize = async (bot, chatId, userId, imageUrl, publicId, resourceType, width, height, label) => {
+  await bot.sendMessage(chatId, `⚙️ Resizing to ${label}...`);
+
+  const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+  const inputBuffer = Buffer.from(response.data);
+  const original = await sharp(inputBuffer).metadata();
+
+  const resized = await resizeWithBlurFill(inputBuffer, width, height);
+  const meta    = await sharp(resized).metadata();
+
+  await bot.sendDocument(chatId, resized, {
+    caption: `✅ Done! ${original.width}×${original.height} → ${meta.width}×${meta.height}\nYour full image — nothing cut! 🎯`,
+  }, { filename: `resized_${width}x${height}.jpg`, contentType: 'image/jpeg' });
+
+  await deleteFromCloudinary(publicId, resourceType);
+  await clearSession(userId);
+};
+
+/**
+ * Main handler
  */
 const imageResize = async (bot, chatId, msg, params = {}) => {
-  const userId = msg.from.id;
-  const photo = msg.photo?.[msg.photo.length - 1] || 
-                (msg.document?.mime_type?.startsWith('image/') ? msg.document : null);
+  const userId  = msg.from.id;
+  const photo   = msg.photo?.[msg.photo.length - 1] ||
+                  (msg.document?.mime_type?.startsWith('image/') ? msg.document : null);
   const caption = (msg.caption || msg.text || params.description || '').trim();
 
   if (!photo) {
-    return bot.sendMessage(chatId, "🖼 *Image Resize*\n\nSend an image with a size or preset in the caption.\n\nExample: *\"1080x1080\"* or *\"whatsapp dp\"*", { parse_mode: 'Markdown' });
+    await bot.sendMessage(
+      chatId,
+      '🖼 *Image Resize*\n\nSend me the image with the size in caption!\n\nExamples:\n• Photo + *"whatsapp dp"*\n• Photo + *"instagram post"*\n• Photo + *"1200x630"*',
+      { parse_mode: 'Markdown' }
+    );
+    return { success: true };
   }
 
-  const dims = parseDimensions(caption) || detectPreset(caption);
+  // Detect size from caption
+  let width, height, label;
+  const dims = parseDimensions(caption);
+  if (dims) {
+    width = dims.width; height = dims.height; label = `${width}×${height}`;
+  } else {
+    const preset = detectPreset(caption);
+    if (preset) { width = preset.width; height = preset.height; label = preset.label; }
+  }
 
-  // Instant visual feedback in Telegram header
-  await bot.sendChatAction(chatId, 'upload_photo');
+  // Upload photo first
   const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/resize');
 
-  // If no size detected, save image to session and ask the user
-  if (!dims) {
-    setSession(userId, { 
-      step: 'waiting_for_resize_dimensions', 
-      imageUrl: upload.url, 
-      publicId: upload.publicId 
-    });
-    return bot.sendMessage(chatId, "📐 *Image received!*\n\nWhat size do you need? Type dimensions like `1080x1080` or a preset name like `instagram story`.", { parse_mode: 'Markdown' });
+  // Size detected — resize immediately, no questions asked
+  if (width && height) {
+    try {
+      await executeResize(bot, chatId, userId, upload.url, upload.publicId, upload.resourceType, width, height, label);
+    } catch (err) {
+      console.error('❌ Resize failed:', err.message);
+      await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);
+    }
+    return { success: true };
   }
 
-  // AUTO-PROCESS: Dimensions found in caption
-  try {
-    await bot.sendChatAction(chatId, 'upload_photo');
-    
-    const response = await axios.get(upload.url, { responseType: 'arraybuffer' });
-    const resizedBuffer = await processBlurFill(Buffer.from(response.data), dims.width, dims.height);
+  // No size detected — save photo in session and ask
+  await setSession(userId, {
+    step: 'waiting_for_resize_dimensions',
+    imageUrl: upload.url,
+    publicId: upload.publicId,
+    resourceType: upload.resourceType,
+  });
 
-    await bot.sendPhoto(chatId, resizedBuffer, { 
-      caption: `✅ *${dims.label || 'Custom'}*: ${dims.width}x${dims.height}`,
-      parse_mode: 'Markdown'
-    });
-    
-    await deleteFromCloudinary(upload.publicId);
-  } catch (err) {
-    console.error("Resize Error:", err);
-    await bot.sendMessage(chatId, "❌ Sorry, I failed to process that image.");
-  }
+  const presetList = Object.entries(PRESETS)
+    .map(([key, val]) => `• *${key}* — ${val.width}×${val.height}`)
+    .join('\n');
 
+  await bot.sendMessage(
+    chatId,
+    `📐 *Image received!*\n\nWhat size do you need? Just type it:\n\n*Presets:*\n${presetList}\n\n*Or custom:* "1200x630"`,
+    { parse_mode: 'Markdown' }
+  );
   return { success: true };
 };
 
 /**
- * SECONDARY HANDLER: If user sends size via text AFTER sending photo
+ * Handle resize callback from inline keyboard (kept for backwards compat)
  */
-const handleDimensionMessage = async (bot, chatId, userId, text) => {
-  const session = getSession(userId);
-  if (!session?.imageUrl) return;
+const handleResizeCallback = async (bot, callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const userId = callbackQuery.from.id;
+  const data   = callbackQuery.data;
 
-  const dims = parseDimensions(text) || detectPreset(text);
-  if (!dims) return bot.sendMessage(chatId, "❌ I didn't recognize that size. Try something like `1200x630`.");
+  await bot.answerCallbackQuery(callbackQuery.id);
 
-  await bot.sendChatAction(chatId, 'upload_photo');
-  
+  const parts  = data.split('_');
+  const width  = parseInt(parts[2]);
+  const height = parseInt(parts[3]);
+
+  const session = await getSession(userId);
+  if (!session?.imageUrl) {
+    await bot.sendMessage(chatId, '⏰ Session expired. Please send the image again.');
+    return;
+  }
+
   try {
-    const response = await axios.get(session.imageUrl, { responseType: 'arraybuffer' });
-    const resized = await processBlurFill(Buffer.from(response.data), dims.width, dims.height);
-    
-    await bot.sendPhoto(chatId, resized, { 
-      caption: `✅ *${dims.label || 'Custom'}*: ${dims.width}x${dims.height}`,
-      parse_mode: 'Markdown'
-    });
-    
-    await deleteFromCloudinary(session.publicId);
-    clearSession(userId);
-  } catch (e) {
-    await bot.sendMessage(chatId, "❌ Error processing image.");
+    await executeResize(bot, chatId, userId, session.imageUrl, session.publicId, session.resourceType, width, height, `${width}×${height}`);
+  } catch (err) {
+    console.error('❌ Resize failed:', err.message);
+    await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);
+    await clearSession(userId);
   }
 };
 
-module.exports = { imageResize, handleDimensionMessage };
+/**
+ * Handle text input for dimensions
+ */
+const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
+  const session = await getSession(userId);
+  if (!session?.imageUrl) {
+    await bot.sendMessage(chatId, '⏰ Session expired. Please send the image again.');
+    return;
+  }
+
+  let width, height, label;
+  const dims = parseDimensions(text);
+  if (dims) {
+    width = dims.width; height = dims.height; label = `${width}×${height}`;
+  } else {
+    const preset = detectPreset(text);
+    if (preset) { width = preset.width; height = preset.height; label = preset.label; }
+  }
+
+  if (!width || !height) {
+    await bot.sendMessage(
+      chatId,
+      `❓ Didn't get that. Try *"whatsapp dp"*, *"instagram post"*, or *"500x500"*`,
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  try {
+    await executeResize(bot, chatId, userId, session.imageUrl, session.publicId, session.resourceType, width, height, label);
+  } catch (err) {
+    console.error('❌ Resize failed:', err.message);
+    await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);
+    await clearSession(userId);
+  }
+};
+
+module.exports = { imageResize, handleResizeCallback, handleResizeDimensionsInput };

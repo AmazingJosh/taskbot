@@ -1,67 +1,87 @@
+const mongoose = require('mongoose');
+
 /**
- * Session store — tracks conversation state per user.
- * 
- * Stores:
- * - Active session (multi-step flows like resize, merge, swap)
- * - Last task context (so intent engine understands conversation flow)
+ * MongoDB-backed session store.
+ * Survives server restarts — critical for Render free tier
+ * which spins down and restarts frequently.
  * 
  * Platform agnostic — keyed by userId only.
- * WhatsApp will use the same store unchanged.
- * 
- * Production upgrade: swap Map for Redis.
+ * Works identically for WhatsApp when added.
  */
 
-const sessions = new Map();
-const context  = new Map();
+// ── Schemas ───────────────────────────────────────────
 
-const SESSION_TTL = 10 * 60 * 1000; // 10 minutes
-const CONTEXT_TTL = 30 * 60 * 1000; // 30 minutes
+const sessionSchema = new mongoose.Schema({
+  userId:    { type: String, required: true, unique: true },
+  data:      { type: mongoose.Schema.Types.Mixed },
+  expiresAt: { type: Date, required: true },
+}, { timestamps: true });
+
+const contextSchema = new mongoose.Schema({
+  userId:    { type: String, required: true, unique: true },
+  lastTask:  { type: String },
+  expiresAt: { type: Date, required: true },
+}, { timestamps: true });
+
+// TTL indexes — MongoDB auto-deletes expired docs
+sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+contextSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
+const Context = mongoose.models.Context || mongoose.model('Context', contextSchema);
+
+const SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CONTEXT_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 // ── Session (active multi-step flow) ─────────────────
 
-const setSession = (userId, data) => {
-  sessions.set(String(userId), {
-    ...data,
-    expiresAt: Date.now() + SESSION_TTL,
-  });
+const setSession = async (userId, data) => {
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  await Session.findOneAndUpdate(
+    { userId: String(userId) },
+    { data, expiresAt },
+    { upsert: true, new: true }
+  );
 };
 
-const getSession = (userId) => {
-  const session = sessions.get(String(userId));
-  if (!session) return null;
-  if (Date.now() > session.expiresAt) {
-    sessions.delete(String(userId));
+const getSession = async (userId) => {
+  const doc = await Session.findOne({ userId: String(userId) });
+  if (!doc) return null;
+  if (doc.expiresAt < new Date()) {
+    await Session.deleteOne({ userId: String(userId) });
     return null;
   }
-  return session;
+  return doc.data;
 };
 
-const clearSession = (userId) => {
-  sessions.delete(String(userId));
+const clearSession = async (userId) => {
+  await Session.deleteOne({ userId: String(userId) });
 };
 
-const updateSession = (userId, data) => {
-  const existing = getSession(userId);
-  if (existing) setSession(userId, { ...existing, ...data });
+const updateSession = async (userId, data) => {
+  const existing = await getSession(userId);
+  if (existing) await setSession(userId, { ...existing, ...data });
 };
 
 // ── Context (last task memory) ────────────────────────
 
-const setLastTask = (userId, task) => {
-  context.set(String(userId), {
-    lastTask: task,
-    expiresAt: Date.now() + CONTEXT_TTL,
-  });
+const setLastTask = async (userId, task) => {
+  const expiresAt = new Date(Date.now() + CONTEXT_TTL_MS);
+  await Context.findOneAndUpdate(
+    { userId: String(userId) },
+    { lastTask: task, expiresAt },
+    { upsert: true, new: true }
+  );
 };
 
-const getLastTask = (userId) => {
-  const ctx = context.get(String(userId));
-  if (!ctx) return null;
-  if (Date.now() > ctx.expiresAt) {
-    context.delete(String(userId));
+const getLastTask = async (userId) => {
+  const doc = await Context.findOne({ userId: String(userId) });
+  if (!doc) return null;
+  if (doc.expiresAt < new Date()) {
+    await Context.deleteOne({ userId: String(userId) });
     return null;
   }
-  return ctx;
+  return { lastTask: doc.lastTask };
 };
 
 module.exports = {
