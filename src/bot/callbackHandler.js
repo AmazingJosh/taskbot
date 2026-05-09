@@ -41,9 +41,10 @@ const handleCallback = async (bot, callbackQuery) => {
   }
 
   // ── Resize mode selected
-  if (data.startsWith('resize_')) {
-    return handleResizeCallback(bot, callbackQuery);
-  }
+// ── Resize callbacks (platform tap or custom size)
+if (data.startsWith('rz_')) {
+  return handleResizeCallback(bot, callbackQuery);
+}
 
   // ── Task selected ─────────────────────────────────
   if (data.startsWith("task_")) {
