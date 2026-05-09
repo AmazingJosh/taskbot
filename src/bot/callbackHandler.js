@@ -1,3 +1,4 @@
+const { handleResizeCallback } = require('../tasks/imageResizer');
 const {
   MAIN_MENU,
   DOCS_MENU,
@@ -7,6 +8,7 @@ const {
   TASK_PROMPTS,
 } = require("./menu");
 const { setSession } = require("../helpers/sessionStore");
+
 const handleCallback = async (bot, callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const userId = callbackQuery.from.id;
@@ -38,9 +40,8 @@ const handleCallback = async (bot, callbackQuery) => {
     });
   }
 
-  // ── Resize mode selected ──────────────────────────
-  if (data.startsWith("resize_")) {
-    const { handleResizeCallback } = require("../tasks/imageResizer");
+  // ── Resize mode selected
+  if (data.startsWith('resize_')) {
     return handleResizeCallback(bot, callbackQuery);
   }
 

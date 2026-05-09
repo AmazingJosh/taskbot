@@ -3,11 +3,6 @@ const axios = require('axios');
 const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fileHelper');
 const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
 
-/**
- * Image Resize — powered by Sharp.js
- * One smart mode: full image visible + blur fill for exact size.
- */
-
 const PRESETS = {
   'whatsapp dp':         { width: 500,  height: 500,  label: 'WhatsApp DP'         },
   'whatsapp':            { width: 500,  height: 500,  label: 'WhatsApp DP'         },
@@ -16,15 +11,19 @@ const PRESETS = {
   'instagram landscape': { width: 1080, height: 566,  label: 'Instagram Landscape' },
   'facebook post':       { width: 1200, height: 630,  label: 'Facebook Post'       },
   'facebook cover':      { width: 851,  height: 315,  label: 'Facebook Cover'      },
-  'twitter post':        { width: 1024, height: 512,  label: 'Twitter Post'        },
-  'twitter header':      { width: 1500, height: 500,  label: 'Twitter Header'      },
+  'twitter post':        { width: 1024, height: 512,  label: 'Twitter/X Post'      },
+  'x post':              { width: 1024, height: 512,  label: 'Twitter/X Post'      },
+  'twitter header':      { width: 1500, height: 500,  label: 'Twitter/X Header'    },
+  'x header':            { width: 1500, height: 500,  label: 'Twitter/X Header'    },
+  'twitter':             { width: 1024, height: 512,  label: 'Twitter/X Post'      },
   'linkedin post':       { width: 1200, height: 627,  label: 'LinkedIn Post'       },
   'linkedin banner':     { width: 1584, height: 396,  label: 'LinkedIn Banner'     },
+  'linkedin profile':    { width: 400,  height: 400,  label: 'LinkedIn Profile'    },
   'youtube thumbnail':   { width: 1280, height: 720,  label: 'YouTube Thumbnail'   },
+  'youtube':             { width: 1280, height: 720,  label: 'YouTube Thumbnail'   },
   'tiktok':              { width: 1080, height: 1920, label: 'TikTok'              },
   'passport':            { width: 413,  height: 531,  label: 'Passport Photo'      },
   'cv photo':            { width: 300,  height: 300,  label: 'CV Photo'            },
-  'linkedin profile':    { width: 400,  height: 400,  label: 'LinkedIn Profile'    },
   'og image':            { width: 1200, height: 630,  label: 'OG Image'            },
   'banner':              { width: 1200, height: 400,  label: 'Web Banner'          },
 };
@@ -44,10 +43,51 @@ const detectPreset = (text = '') => {
 };
 
 /**
+ * Platform selection keyboard — shown when user sends photo with no caption.
+ * User taps platform → instant resize. No typing needed.
+ * Custom size button → bot asks for dimensions.
+ */
+const PLATFORM_KEYBOARD = {
+  reply_markup: {
+    inline_keyboard: [
+      [
+        { text: '📱 WhatsApp DP',       callback_data: 'rz_500_500_WhatsApp DP'           },
+        { text: '📸 Instagram Post',    callback_data: 'rz_1080_1080_Instagram Post'       },
+      ],
+      [
+        { text: '📱 Instagram Story',   callback_data: 'rz_1080_1920_Instagram Story'      },
+        { text: '🌄 Instagram Land',    callback_data: 'rz_1080_566_Instagram Landscape'   },
+      ],
+      [
+        { text: '👥 Facebook Post',     callback_data: 'rz_1200_630_Facebook Post'         },
+        { text: '🎭 Facebook Cover',    callback_data: 'rz_851_315_Facebook Cover'          },
+      ],
+      [
+        { text: '🐦 Twitter/X Post',    callback_data: 'rz_1024_512_Twitter/X Post'        },
+        { text: '🐦 Twitter/X Header',  callback_data: 'rz_1500_500_Twitter/X Header'      },
+      ],
+      [
+        { text: '💼 LinkedIn Post',     callback_data: 'rz_1200_627_LinkedIn Post'         },
+        { text: '🏷 LinkedIn Banner',   callback_data: 'rz_1584_396_LinkedIn Banner'       },
+      ],
+      [
+        { text: '▶️ YouTube Thumbnail', callback_data: 'rz_1280_720_YouTube Thumbnail'     },
+        { text: '🎵 TikTok',            callback_data: 'rz_1080_1920_TikTok'               },
+      ],
+      [
+        { text: '🪪 Passport Photo',    callback_data: 'rz_413_531_Passport Photo'         },
+        { text: '📄 CV Photo',          callback_data: 'rz_300_300_CV Photo'               },
+      ],
+      [
+        { text: '✏️ Custom size...',    callback_data: 'rz_custom'                         },
+      ],
+    ],
+  },
+};
+
+/**
  * Core resize — full image visible, exact target size.
- * Step 1: blurred background at exact target size
- * Step 2: scale full original to fit inside target (nothing cut)
- * Step 3: composite full image centered on blurred background
+ * Blurred version of same photo fills remaining edges.
  */
 const resizeWithBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
   const blurredBg = await sharp(imageBuffer)
@@ -69,21 +109,20 @@ const resizeWithBlurFill = async (imageBuffer, targetWidth, targetHeight) => {
 };
 
 /**
- * Execute resize and send result to user
+ * Execute resize and send to user
  */
 const executeResize = async (bot, chatId, userId, imageUrl, publicId, resourceType, width, height, label) => {
   await bot.sendMessage(chatId, `⚙️ Resizing to ${label}...`);
 
-  const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+  const response    = await axios.get(imageUrl, { responseType: 'arraybuffer' });
   const inputBuffer = Buffer.from(response.data);
-  const original = await sharp(inputBuffer).metadata();
-
-  const resized = await resizeWithBlurFill(inputBuffer, width, height);
-  const meta    = await sharp(resized).metadata();
+  const original    = await sharp(inputBuffer).metadata();
+  const resized     = await resizeWithBlurFill(inputBuffer, width, height);
+  const meta        = await sharp(resized).metadata();
 
   await bot.sendDocument(chatId, resized, {
-    caption: `✅ Done! ${original.width}×${original.height} → ${meta.width}×${meta.height}\nYour full image — nothing cut! 🎯`,
-  }, { filename: `resized_${width}x${height}.jpg`, contentType: 'image/jpeg' });
+    caption: `✅ ${label} ready!\n${original.width}×${original.height} → ${meta.width}×${meta.height} — full image, nothing cut! 🎯`,
+  }, { filename: `${label.replace(/\s/g, '_')}_${width}x${height}.jpg`, contentType: 'image/jpeg' });
 
   await deleteFromCloudinary(publicId, resourceType);
   await clearSession(userId);
@@ -101,13 +140,16 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
   if (!photo) {
     await bot.sendMessage(
       chatId,
-      '🖼 *Image Resize*\n\nSend me the image with the size in caption!\n\nExamples:\n• Photo + *"whatsapp dp"*\n• Photo + *"instagram post"*\n• Photo + *"1200x630"*',
+      '🖼 *Image Resize*\n\nSend me the image with the platform name or size in caption!\n\nExamples:\n• Photo + *"whatsapp dp"*\n• Photo + *"instagram post"*\n• Photo + *"1200x630"*',
       { parse_mode: 'Markdown' }
     );
     return { success: true };
   }
 
-  // Detect size from caption
+  // Upload photo first — we need it regardless
+  const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/resize');
+
+  // Check if caption has size info
   let width, height, label;
   const dims = parseDimensions(caption);
   if (dims) {
@@ -117,10 +159,7 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
     if (preset) { width = preset.width; height = preset.height; label = preset.label; }
   }
 
-  // Upload photo first
-  const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/resize');
-
-  // Size detected — resize immediately, no questions asked
+  // Size found in caption — resize immediately
   if (width && height) {
     try {
       await executeResize(bot, chatId, userId, upload.url, upload.publicId, upload.resourceType, width, height, label);
@@ -131,28 +170,28 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
     return { success: true };
   }
 
-  // No size detected — save photo in session and ask
+  // No caption or unrecognized caption — save photo, show platform buttons
   await setSession(userId, {
-    step: 'waiting_for_resize_dimensions',
-    imageUrl: upload.url,
-    publicId: upload.publicId,
+    step:         'waiting_for_resize_platform',
+    imageUrl:     upload.url,
+    publicId:     upload.publicId,
     resourceType: upload.resourceType,
   });
 
-  const presetList = Object.entries(PRESETS)
-    .map(([key, val]) => `• *${key}* — ${val.width}×${val.height}`)
-    .join('\n');
-
   await bot.sendMessage(
     chatId,
-    `📐 *Image received!*\n\nWhat size do you need? Just type it:\n\n*Presets:*\n${presetList}\n\n*Or custom:* "1200x630"`,
-    { parse_mode: 'Markdown' }
+    '📐 *What platform is this for?*\n\nTap a platform or choose custom size:',
+    { parse_mode: 'Markdown', ...PLATFORM_KEYBOARD }
   );
+
   return { success: true };
 };
 
 /**
- * Handle resize callback from inline keyboard (kept for backwards compat)
+ * Handle platform button tap or custom size callback
+ * callback_data formats:
+ * - "rz_500_500_WhatsApp DP"  → instant resize
+ * - "rz_custom"               → ask for custom dimensions
  */
 const handleResizeCallback = async (bot, callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
@@ -161,18 +200,39 @@ const handleResizeCallback = async (bot, callbackQuery) => {
 
   await bot.answerCallbackQuery(callbackQuery.id);
 
-  const parts  = data.split('_');
-  const width  = parseInt(parts[2]);
-  const height = parseInt(parts[3]);
-
   const session = await getSession(userId);
   if (!session?.imageUrl) {
     await bot.sendMessage(chatId, '⏰ Session expired. Please send the image again.');
     return;
   }
 
+  // Custom size — ask user to type dimensions
+  if (data === 'rz_custom') {
+    await setSession(userId, { ...session, step: 'waiting_for_resize_dimensions' });
+    await bot.sendMessage(
+      chatId,
+      '✏️ Type your custom dimensions:\n\nExample: *586x342* or *1200x630*',
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+
+  // Platform selected — parse callback data
+  // format: rz_WIDTH_HEIGHT_LABEL
+  const withoutPrefix = data.replace('rz_', '');
+  const firstUnderscore  = withoutPrefix.indexOf('_');
+  const secondUnderscore = withoutPrefix.indexOf('_', firstUnderscore + 1);
+
+  const width  = parseInt(withoutPrefix.substring(0, firstUnderscore));
+  const height = parseInt(withoutPrefix.substring(firstUnderscore + 1, secondUnderscore));
+  const label  = withoutPrefix.substring(secondUnderscore + 1);
+
   try {
-    await executeResize(bot, chatId, userId, session.imageUrl, session.publicId, session.resourceType, width, height, `${width}×${height}`);
+    await executeResize(
+      bot, chatId, userId,
+      session.imageUrl, session.publicId, session.resourceType,
+      width, height, label
+    );
   } catch (err) {
     console.error('❌ Resize failed:', err.message);
     await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);
@@ -181,7 +241,7 @@ const handleResizeCallback = async (bot, callbackQuery) => {
 };
 
 /**
- * Handle text input for dimensions
+ * Handle typed custom dimensions
  */
 const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
   const session = await getSession(userId);
@@ -202,14 +262,18 @@ const handleResizeDimensionsInput = async (bot, chatId, userId, text) => {
   if (!width || !height) {
     await bot.sendMessage(
       chatId,
-      `❓ Didn't get that. Try *"whatsapp dp"*, *"instagram post"*, or *"500x500"*`,
+      '❓ Please type dimensions like *586x342* or *1200x630*',
       { parse_mode: 'Markdown' }
     );
     return;
   }
 
   try {
-    await executeResize(bot, chatId, userId, session.imageUrl, session.publicId, session.resourceType, width, height, label);
+    await executeResize(
+      bot, chatId, userId,
+      session.imageUrl, session.publicId, session.resourceType,
+      width, height, label
+    );
   } catch (err) {
     console.error('❌ Resize failed:', err.message);
     await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);

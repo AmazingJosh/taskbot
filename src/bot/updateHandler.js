@@ -69,14 +69,14 @@ const handleUpdate = async (bot, update) => {
   const lastTaskContext = await getLastTask(userId);
 
   // Resize: waiting for dimensions text input
-  if (session?.step === 'waiting_for_resize_dimensions' && msg.text) {
+  if (session?.step === 'waiting_for_resize_dimensions' || session?.step === 'waiting_for_resize_platform' && msg.text) {
     const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
   // Resize: user sends another photo while waiting for dimensions
-  if (session?.step === 'waiting_for_resize_dimensions' && msg.photo) {
+  if (session?.step === 'waiting_for_resize_dimensions' || session?.step === 'waiting_for_resize_platform' && msg.photo) {
     const { imageResize } = require('../tasks/imageResize');
     await imageResize(bot, chatId, msg, {});
     return;
