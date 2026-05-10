@@ -1,1 +1,121 @@
-# taskbot
+# 🤖 TaskBot
+
+An AI-powered Telegram bot that routes natural language requests to 3rd party APIs and returns results instantly.
+
+---
+
+## 🏗 Project Structure
+
+```
+taskbot/
+├── src/
+│   ├── index.js                  # Entry point (Express server)
+│   ├── config/
+│   │   ├── db.js                 # MongoDB connection
+│   │   └── cloudinary.js         # Cloudinary setup
+│   ├── bot/
+│   │   ├── botSetup.js           # Telegram bot init + webhook
+│   │   ├── webhook.js            # POST /webhook route
+│   │   └── updateHandler.js      # Parses Telegram updates
+│   ├── services/
+│   │   ├── intentEngine.js       # Claude reads user intent → JSON
+│   │   └── taskRouter.js         # Routes intent to correct handler
+│   ├── tasks/
+│   │   ├── backgroundRemoval.js  # Remove.bg
+│   │   ├── pdfCompress.js        # ilovepdf
+│   │   ├── transcription.js      # AssemblyAI
+│   │   ├── translation.js        # DeepL
+│   │   ├── textToSpeech.js       # ElevenLabs
+│   │   ├── weather.js            # OpenWeatherMap
+│   │   └── currencyConvert.js    # ExchangeRate API
+│   ├── models/
+│   │   ├── User.js               # User schema
+│   │   └── Task.js               # Task log schema
+│   └── helpers/
+│       └── fileHelper.js         # Telegram → Cloudinary → URL
+        └── conversationHistory.js     
+├── .env.example
+├── package.json
+└── README.md
+```
+
+---
+
+## 🚀 Setup Guide
+
+### 1. Clone & Install
+```bash
+git clone <your-repo>
+cd taskbot
+npm install
+```
+
+### 2. Create your .env
+```bash
+cp .env.example .env
+```
+Fill in all the API keys (see below for where to get them).
+
+### 3. Create your Telegram bot
+- Message [@BotFather](https://t.me/BotFather) on Telegram
+- Send `/newbot` and follow the steps
+- Copy the bot token into `TELEGRAM_BOT_TOKEN`
+
+### 4. Get your API keys
+
+| Service | Where to get it |
+|---|---|
+| Anthropic (Claude) | https://console.anthropic.com |
+| Cloudinary | https://cloudinary.com |
+| Remove.bg | https://www.remove.bg/api |
+| AssemblyAI | https://www.assemblyai.com |
+| ElevenLabs | https://elevenlabs.io |
+| DeepL | https://www.deepl.com/pro-api |
+| OpenWeatherMap | https://openweathermap.org/api |
+| ilovepdf | https://developer.ilovepdf.com |
+| ExchangeRate API | https://www.exchangerate-api.com (free tier) |
+
+### 5. Deploy (required for webhooks)
+Telegram webhooks need a public HTTPS URL. Use one of:
+- **Railway** → https://railway.app (recommended, easy)
+- **Render** → https://render.com (free tier available)
+- **VPS** → DigitalOcean, Hetzner + nginx
+
+Set `WEBHOOK_URL` to your deployed server URL.
+
+### 6. Run
+```bash
+# Development
+npm run dev
+
+# Production
+npm start
+```
+
+---
+
+## 🔧 How It Works
+
+```
+User message (Telegram)
+  → Webhook fires to your server
+    → Claude detects intent → returns JSON
+      → Task router calls correct API
+        → Result sent back to user
+```
+
+---
+
+## ➕ Adding a New Task
+
+1. Create `src/tasks/yourTask.js`
+2. Add it to `src/services/taskRouter.js` switch statement
+3. Add the task name to the intent engine system prompt
+4. Add the API key to `.env`
+
+That's it — plug and play!
+
+---
+
+## 📱 WhatsApp (Coming Soon)
+The entire backend is channel-agnostic. When ready, add Twilio or Meta Cloud API as a second entry point — the intent engine and task handlers stay exactly the same.

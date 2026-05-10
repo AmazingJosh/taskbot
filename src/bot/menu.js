@@ -8,7 +8,7 @@
 // MESSAGES
 // ─────────────────────────────────────────────────────────────
 
-const WELCOME_MESSAGE = `🌟 *Welcome to LifeBot — Life Made Easy!*
+const WELCOME_MESSAGE = `🌟 *Welcome to Taskify — your one-tap auto bot!*
 
 Hey {name}! 👋
 
@@ -28,8 +28,8 @@ _🍳 And trust me... what's cooking in the kitchen is going to blow your mind. 
 
 👇 *Tap a task below to get started!*`;
 
-const MENU_MESSAGE = `🌟 *LifeBot — Life Made Easy*
-_One tap. Task done. Simple._
+const MENU_MESSAGE = `🌟 *Taskify — your one-tap auto bot*
+_.
 
 👇 What are we doing today?`;
 
