@@ -50,36 +50,37 @@ const detectPreset = (text = '') => {
 const PLATFORM_KEYBOARD = {
   reply_markup: {
     inline_keyboard: [
+      // ── Profile Pictures ─────────────────────────────
       [
-        { text: '📱 WhatsApp DP',       callback_data: 'rz_500_500_WhatsApp DP'           },
-        { text: '📸 Instagram Post',    callback_data: 'rz_1080_1080_Instagram Post'       },
+        { text: '📱 WhatsApp DP',       callback_data: 'rz_500_500_WhatsApp DP'          },
+        { text: '📸 Instagram DP',      callback_data: 'rz_320_320_Instagram DP'         },
       ],
       [
-        { text: '📱 Instagram Story',   callback_data: 'rz_1080_1920_Instagram Story'      },
-        { text: '🌄 Instagram Land',    callback_data: 'rz_1080_566_Instagram Landscape'   },
+        { text: '💼 LinkedIn DP',       callback_data: 'rz_400_400_LinkedIn DP'          },
+        { text: '🐦 Twitter/X DP',      callback_data: 'rz_400_400_Twitter/X DP'         },
+      ],
+      // ── Stories ──────────────────────────────────────
+      [
+        { text: '📲 Instagram Story',   callback_data: 'rz_1080_1920_Instagram Story'    },
+        { text: '🎵 TikTok',            callback_data: 'rz_1080_1920_TikTok'             },
+      ],
+      // ── Covers & Banners ─────────────────────────────
+      [
+        { text: '🎭 Facebook Cover',    callback_data: 'rz_851_315_Facebook Cover'       },
+        { text: '🐦 Twitter/X Header',  callback_data: 'rz_1500_500_Twitter/X Header'    },
       ],
       [
-        { text: '👥 Facebook Post',     callback_data: 'rz_1200_630_Facebook Post'         },
-        { text: '🎭 Facebook Cover',    callback_data: 'rz_851_315_Facebook Cover'          },
+        { text: '🏷 LinkedIn Banner',   callback_data: 'rz_1584_396_LinkedIn Banner'     },
+        { text: '▶️ YouTube Thumbnail', callback_data: 'rz_1280_720_YouTube Thumbnail'   },
       ],
+      // ── Professional ─────────────────────────────────
       [
-        { text: '🐦 Twitter/X Post',    callback_data: 'rz_1024_512_Twitter/X Post'        },
-        { text: '🐦 Twitter/X Header',  callback_data: 'rz_1500_500_Twitter/X Header'      },
+        { text: '🪪 Passport Photo',    callback_data: 'rz_413_531_Passport Photo'       },
+        { text: '📄 CV Photo',          callback_data: 'rz_300_300_CV Photo'             },
       ],
+      // ── Custom ───────────────────────────────────────
       [
-        { text: '💼 LinkedIn Post',     callback_data: 'rz_1200_627_LinkedIn Post'         },
-        { text: '🏷 LinkedIn Banner',   callback_data: 'rz_1584_396_LinkedIn Banner'       },
-      ],
-      [
-        { text: '▶️ YouTube Thumbnail', callback_data: 'rz_1280_720_YouTube Thumbnail'     },
-        { text: '🎵 TikTok',            callback_data: 'rz_1080_1920_TikTok'               },
-      ],
-      [
-        { text: '🪪 Passport Photo',    callback_data: 'rz_413_531_Passport Photo'         },
-        { text: '📄 CV Photo',          callback_data: 'rz_300_300_CV Photo'               },
-      ],
-      [
-        { text: '✏️ Custom size...',    callback_data: 'rz_custom'                         },
+        { text: '✏️ Custom size...',    callback_data: 'rz_custom'                       },
       ],
     ],
   },
