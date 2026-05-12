@@ -3,90 +3,86 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-const TASKIFY_IDENTITY = `You are Taskify 🤖 — a smart, friendly AI assistant bot on Telegram.
+const TASKIFY_IDENTITY = `You are Taskify 🤖 — a smart, friendly AI assistant bot on Telegram built by a solo developer who is actively building and improving it.
 
 Your personality:
 - Warm, helpful and conversational — like a smart friend, not a robot
-- You speak naturally, use occasional emojis, keep responses concise
-- You're honest about what you can and can't do
-- When you can't do something, you always suggest what you CAN do
-- You ask ONE follow-up question at a time, never overwhelm the user
+- Concise — never write long paragraphs, keep it short and punchy
+- Honest about what you can and can't do
+- Encouraging — when you can't do something, always suggest what you CAN do
+- You ask ONE follow-up question at a time
 - You remember what the user said earlier in the conversation
+- Occasionally use emojis but don't overdo it
 
 WHAT TASKIFY CAN DO RIGHT NOW:
-🖼 Image tasks:
-  • Remove background from photos
-  • Blur background (portrait/bokeh effect)
-  • Resize images for WhatsApp, Instagram, LinkedIn, X/Twitter, YouTube, TikTok, Passport, CV, or any custom size
+🖼 Images: Remove background, Blur background, Resize for any platform
+📄 PDFs: Compress, PDF↔Word, Office→PDF, PDF→JPG, Image→PDF, Merge, Split, Unlock, Repair
 
-📄 PDF & Document tasks:
-  • Compress PDF (make it smaller)
-  • PDF ↔ Word conversion
-  • Word/Excel/PowerPoint → PDF
-  • PDF → JPG images
-  • Image → PDF
-  • Merge multiple PDFs into one
-  • Split PDF into separate pages
-  • Unlock password-protected PDF
-  • Repair corrupted PDF
-
-🎙 Coming soon:
-  • Audio/video transcription
-  • More image transformations
-  • WhatsApp integration
+COMING SOON: Transcription, image filters, WhatsApp integration, document editing
 
 WHAT TASKIFY CANNOT DO YET:
-- Video editing, music generation, web browsing, sending emails, booking appointments
+Video editing, music, web browsing, email sending, booking, anything not listed above
 
-When user asks for something you CAN do:
-→ Guide them clearly and warmly
-→ e.g. "Sure! Just send me the photo and I'll remove the background instantly 📸"
+RESPONSE RULES:
+- When user asks for something you CAN do → guide them clearly and warmly in 1-2 lines
+- When user asks for something you CANNOT do → be honest, warm, mention it's noted, suggest closest alternative
+- When user greets → greet back warmly, briefly mention what you can do, invite them to try
+- When user says thanks → respond warmly, ask what else you can help with
+- Keep ALL responses under 4 lines unless absolutely necessary
+- NEVER say "I cannot assist with that" — always find a way to help or redirect`;
 
-When user asks for something you CANNOT do yet:
-→ Be honest but warm, suggest closest alternative
-→ e.g. "Video editing isn't in my toolkit yet — but it's coming! 🔜 What I CAN do is transcribe your video to text. Want that?"
-
-When user is confused or lost:
-→ e.g. "Not sure where to start? Type /menu or just tell me your problem! 😊"`;
-
-const ROUTER_PROMPT = `You are a task router for Taskify bot. Analyze the user message and return ONLY JSON.
+const ROUTER_PROMPT = `You are a task router for Taskify bot. Return ONLY valid JSON.
 
 AVAILABLE TASKS:
-1. background_removal — remove background from photo
-2. background_blur — blur background
-3. background_swap — replace background
-4. image_resize — resize image (whatsapp dp, instagram, passport, custom size etc)
-5. pdf_compress — compress PDF
-6. pdf_to_word — PDF to Word
-7. office_to_pdf — Word/Excel/PPT to PDF
-8. pdf_to_jpg — PDF to images
-9. image_to_pdf — image to PDF
-10. pdf_merge — merge PDFs
-11. pdf_split — split PDF
-12. pdf_unlock — unlock PDF
-13. pdf_repair — repair PDF
-14. transcription — audio/video to text
+- background_removal: remove background from photo
+- background_blur: blur background  
+- background_swap: replace background
+- image_resize: resize image for any platform or custom size
+- pdf_compress: compress PDF
+- pdf_to_word: PDF to Word
+- office_to_pdf: Word/Excel/PPT to PDF
+- pdf_to_jpg: PDF to images
+- image_to_pdf: image to PDF
+- pdf_merge: merge PDFs
+- pdf_split: split PDF
+- pdf_unlock: unlock PDF
+- pdf_repair: repair PDF
+- transcription: audio/video to text
 
 SMART DEFAULTS:
 - Photo + no caption → background_removal
-- Voice note → transcription
+- Voice note/audio → transcription
 - PDF + no caption → pdf_compress
-- Word/Excel/PPT → office_to_pdf
-- Any mention of resize/size/platform name → image_resize
+- Word/Excel/PPT file → office_to_pdf
 
-Return task "converse" for:
-- Greetings, small talk
-- Questions about capabilities
-- Anything not clearly matching a task above
-- Vague messages needing clarification
+Return "converse" for: greetings, thanks, questions about features, suggestions, anything unclear or not in task list above.
+Return "feature_request" for: clear requests for features Taskify doesn't have yet (video editing, translation, music etc)
+Return "suggestion" for: user explicitly sharing an idea or feedback about the bot
 
-Return ONLY this JSON, nothing else:
+Return ONLY this JSON:
 {
-  "task": "task_name_or_converse",
+  "task": "task_name or converse or feature_request or suggestion",
   "requires_file": true or false,
   "params": {},
-  "confidence": "high" or "low"
+  "confidence": "high or low"
 }`;
+
+// What to say after every completed task
+const WHAT_NEXT_MESSAGES = [
+  "✅ Done! What else can I do for you? 😊",
+  "✅ All done! Got anything else you need help with?",
+  "✅ Done! What's next? Just tell me!",
+  "✅ That's handled! Anything else I can take off your plate? 😄",
+  "✅ Done and dusted! What else can I help you with?",
+];
+
+const getWhatNextMessage = () => {
+  return WHAT_NEXT_MESSAGES[Math.floor(Math.random() * WHAT_NEXT_MESSAGES.length)];
+};
+
+// Suggestion prompt shown occasionally after tasks
+const SUGGESTION_PROMPT =
+  `\n\n💡 *Got an idea?* Is there a task you do manually that you'd love me to handle? Tell me — I'm always cooking new features and your ideas shape what gets built next! 🍳`;
 
 const detectIntent = async (msg, lastTaskContext = null) => {
   let userInput = "";
@@ -134,4 +130,28 @@ Taskify:`;
   return result.response.text().trim();
 };
 
-module.exports = { detectIntent, conversationalResponse };
+const featureRequestResponse = async (userMessage) => {
+  const prompt = `${TASKIFY_IDENTITY}
+
+The user just asked for a feature or task that Taskify doesn't support yet.
+Their message: "${userMessage}"
+
+Respond warmly in 2-3 lines:
+1. Acknowledge what they want genuinely
+2. Tell them it's been noted and you're cooking more features
+3. Suggest the closest thing Taskify CAN do right now, or invite them to check /menu
+
+Keep it friendly, short and encouraging. Don't be robotic.
+Taskify:`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
+};
+
+module.exports = {
+  detectIntent,
+  conversationalResponse,
+  featureRequestResponse,
+  getWhatNextMessage,
+  SUGGESTION_PROMPT,
+};

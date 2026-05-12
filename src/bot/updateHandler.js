@@ -1,11 +1,32 @@
-const { detectIntent, conversationalResponse } = require("../services/intentEngine");
-const { routeTask } = require("../routes/taskRouter");
+const {
+  detectIntent,
+  conversationalResponse,
+  featureRequestResponse,
+  getWhatNextMessage,
+  SUGGESTION_PROMPT,
+} = require("../services/intentEngine");
+const { routeTask }       = require("../routes/taskRouter");
 const { findOrCreateUser } = require("../models/userModels");
-const { logTask } = require("../models/taskModel");
-const { getSession, clearSession, setLastTask, getLastTask } = require("../helpers/sessionStore");
+const { logTask }          = require("../models/taskModel");
+const {
+  getSession, clearSession,
+  setLastTask, getLastTask,
+} = require("../helpers/sessionStore");
 const { addMessage, getHistory, clearHistory } = require("../helpers/conversationHistory");
-const { handleCallback } = require("./callbackHandler");
+const { notifyAdmin }     = require("../helpers/adminNotifier");
+const { handleCallback }  = require("./callbackHandler");
 const { MAIN_MENU, WELCOME_MESSAGE, MENU_MESSAGE } = require("./menu");
+
+// Track how many tasks a user has done this session
+// Used to decide when to show the suggestion prompt
+const taskCounts = new Map();
+
+const getTaskCount = (userId) => taskCounts.get(String(userId)) || 0;
+const incrementTaskCount = (userId) => {
+  const count = getTaskCount(userId) + 1;
+  taskCounts.set(String(userId), count);
+  return count;
+};
 
 const preRoute = (msg, lastTaskContext) => {
   const lastTask = lastTaskContext?.lastTask;
@@ -29,17 +50,30 @@ const preRoute = (msg, lastTaskContext) => {
   return null;
 };
 
-/**
- * Describe what the user sent for conversation history
- */
 const describeMessage = (msg) => {
   if (msg.text)     return msg.text;
   if (msg.photo)    return `[sent a photo${msg.caption ? `: "${msg.caption}"` : ''}]`;
   if (msg.voice)    return '[sent a voice note]';
   if (msg.audio)    return '[sent an audio file]';
-  if (msg.document) return `[sent a document: ${msg.document.file_name || msg.document.mime_type}]`;
+  if (msg.document) return `[sent: ${msg.document.file_name || msg.document.mime_type}]`;
   if (msg.video)    return '[sent a video]';
   return '[sent a message]';
+};
+
+/**
+ * Send "what next?" after every completed task.
+ * Every 3rd task, also show the suggestion prompt.
+ */
+const sendWhatNext = async (bot, chatId, userId) => {
+  const count = incrementTaskCount(userId);
+  let message = getWhatNextMessage();
+
+  // Every 3rd completed task — invite suggestions
+  if (count % 3 === 0) {
+    message += SUGGESTION_PROMPT;
+  }
+
+  await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 };
 
 const handleUpdate = async (bot, update) => {
@@ -58,7 +92,7 @@ const handleUpdate = async (bot, update) => {
 
   // ── Commands ─────────────────────────────────────────
   if (msg.text === '/start') {
-    await clearHistory(userId); // fresh start
+    await clearHistory(userId);
     return bot.sendMessage(
       chatId,
       WELCOME_MESSAGE.replace('{name}', username),
@@ -73,7 +107,7 @@ const handleUpdate = async (bot, update) => {
   if (msg.text === '/help') {
     return bot.sendMessage(
       chatId,
-      `*How to use Taskify* 🛠\n\n*Option 1 — Just talk to me:*\nTell me what you need in plain English!\n• "Remove the background from this photo"\n• "Resize this for WhatsApp"\n• "Compress this PDF"\n\n*Option 2 — Tap the menu:*\nType /menu and tap any button\n\n*Option 3 — Just send a file:*\n• Send a photo → I remove the background\n• Send a PDF → I compress it\n• Send a Word file → I convert to PDF\n\nI understand natural language — just talk to me! 😊`,
+      `*How to use Taskify* 🛠\n\n*Just talk to me naturally:*\n• "Remove the background from this photo"\n• "Resize this for WhatsApp"\n• "Compress this PDF"\n• "I need to convert a Word doc to PDF"\n\n*Or tap the menu:* /menu\n\n*Or just send a file* — I'll figure out what to do!\n\n💡 Have a feature idea? Just tell me — I'm always building!`,
       { parse_mode: 'Markdown' }
     );
   }
@@ -82,21 +116,18 @@ const handleUpdate = async (bot, update) => {
   const session         = await getSession(userId);
   const lastTaskContext = await getLastTask(userId);
 
-  // Resize: waiting for dimensions
   if (session?.step === 'waiting_for_resize_dimensions' && msg.text) {
     const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
-  // Resize: waiting for platform selection, user types instead of tapping
   if (session?.step === 'waiting_for_resize_platform' && msg.text) {
     const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
-  // Resize: user sends new photo while in resize session
   if ((session?.step === 'waiting_for_resize_dimensions' ||
        session?.step === 'waiting_for_resize_platform') && msg.photo) {
     const { imageResize } = require('../tasks/imageResize');
@@ -104,19 +135,19 @@ const handleUpdate = async (bot, update) => {
     return;
   }
 
-  // PDF merge
   if (session?.step === 'waiting_for_merge_files') {
     const { mergePDFs } = require('../tasks/pdfTools');
     await bot.sendMessage(chatId, '⚙️ On it...');
-    try { await mergePDFs(bot, chatId, msg); }
-    catch (err) {
+    try {
+      const result = await mergePDFs(bot, chatId, msg);
+      if (result?.success) await sendWhatNext(bot, chatId, userId);
+    } catch (err) {
       console.error('❌ Merge failed:', err.message);
       await bot.sendMessage(chatId, '😕 Something went wrong. Please try again.');
     }
     return;
   }
 
-  // Background swap step 2
   if (session?.step === 'waiting_for_background' && msg.photo) {
     await bot.sendMessage(chatId, '⚙️ On it...');
     const { swapBackground } = require('../tasks/backgroundSwap');
@@ -128,7 +159,6 @@ const handleUpdate = async (bot, update) => {
     return;
   }
 
-  // Meme step 2
   if (session?.step === 'waiting_for_meme_text' && msg.text) {
     await bot.sendMessage(chatId, '⚙️ On it...');
     const { generateMeme } = require('../tasks/memeGenerator');
@@ -140,7 +170,6 @@ const handleUpdate = async (bot, update) => {
     return;
   }
 
-  // Menu tap: waiting for file input
   if (session?.step === 'waiting_for_task_input') {
     const needsPhoto = ['background_removal', 'background_blur', 'image_resize'].includes(session.task);
     const needsDoc   = ['pdf_compress', 'pdf_to_word', 'office_to_pdf', 'pdf_to_jpg',
@@ -148,15 +177,9 @@ const handleUpdate = async (bot, update) => {
     const needsImage = ['image_to_pdf'].includes(session.task);
     const isMerge    = session.task === 'pdf_merge';
 
-    if (needsPhoto && !msg.photo) {
-      return bot.sendMessage(chatId, '📷 I need a photo for this. Please send a photo!');
-    }
-    if (needsDoc && !msg.document) {
-      return bot.sendMessage(chatId, '📄 I need a document for this. Please send a file!');
-    }
-    if (needsImage && !msg.photo && !msg.document) {
-      return bot.sendMessage(chatId, '🖼 I need an image for this. Please send one!');
-    }
+    if (needsPhoto && !msg.photo) return bot.sendMessage(chatId, '📷 I need a photo for this. Please send one!');
+    if (needsDoc && !msg.document) return bot.sendMessage(chatId, '📄 I need a document for this. Please send a file!');
+    if (needsImage && !msg.photo && !msg.document) return bot.sendMessage(chatId, '🖼 I need an image for this. Please send one!');
 
     await bot.sendMessage(chatId, '⚙️ On it...');
 
@@ -172,10 +195,11 @@ const handleUpdate = async (bot, update) => {
     try {
       const result = await routeTask(bot, chatId, msg, intent);
       await setLastTask(userId, intent.task);
+      if (result?.success) await sendWhatNext(bot, chatId, userId);
       await logTask({
         userId, platform: 'telegram', task: intent.task,
-        status: result.success ? 'success' : 'failed',
-        errorMessage: result.error || null,
+        status: result?.success ? 'success' : 'failed',
+        errorMessage: result?.error || null,
       });
     } catch (err) {
       console.error('❌ Task failed:', err.message);
@@ -186,51 +210,69 @@ const handleUpdate = async (bot, update) => {
 
   // ── No session — detect intent ────────────────────────
   try {
-    // Pre-router first (instant, no API)
     let intent = preRoute(msg, lastTaskContext);
-
-    // Gemini router fallback
-    if (!intent) {
-      intent = await detectIntent(msg, lastTaskContext);
-    }
+    if (!intent) intent = await detectIntent(msg, lastTaskContext);
 
     console.log(`📌 Intent: ${intent.task} | confidence: ${intent.confidence}`);
 
-    // ── CONVERSATION MODE ─────────────────────────────
+    // ── FEATURE REQUEST ───────────────────────────────
+    if (intent.task === 'feature_request') {
+      const userText  = msg.text || msg.caption || describeMessage(msg);
+      const response  = await featureRequestResponse(userText);
+      await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
+
+      // Notify admin silently
+      await notifyAdmin(bot, 'feature_request', {
+        userId,
+        username,
+        text: userText,
+      });
+
+      await addMessage(userId, 'user', userText);
+      await addMessage(userId, 'assistant', response);
+      return;
+    }
+
+    // ── SUGGESTION ────────────────────────────────────
+    if (intent.task === 'suggestion') {
+      const userText = msg.text || describeMessage(msg);
+      const response = `🌟 Love that idea! I've noted it — the builder will see this and it might just become the next feature! 🍳\n\nAnything else I can help you with right now?`;
+      await bot.sendMessage(chatId, response);
+
+      // Notify admin
+      await notifyAdmin(bot, 'suggestion', { userId, username, text: userText });
+
+      await addMessage(userId, 'user', userText);
+      await addMessage(userId, 'assistant', response);
+      return;
+    }
+
+    // ── CONVERSATION ──────────────────────────────────
     if (intent.task === 'converse') {
-      // Save user message to history
       const userText = describeMessage(msg);
       await addMessage(userId, 'user', userText);
-
-      // Get conversation history for context
-      const history = await getHistory(userId);
-
-      // Let Taskify respond naturally
+      const history  = await getHistory(userId);
       const response = await conversationalResponse(userText, history);
-
-      // Save Taskify's response to history
       await addMessage(userId, 'assistant', response);
-
       await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
       return;
     }
 
-    // ── TASK MODE ────────────────────────────────────
+    // ── TASK ──────────────────────────────────────────
     await bot.sendMessage(chatId, '⚙️ On it...');
-
-    // Save to conversation history
     await addMessage(userId, 'user', describeMessage(msg));
 
     const result = await routeTask(bot, chatId, msg, intent);
     await setLastTask(userId, intent.task);
+    await addMessage(userId, 'assistant', `[completed: ${intent.task}]`);
 
-    // Save task completion to history
-    await addMessage(userId, 'assistant', `[completed task: ${intent.task}]`);
+    // Show "what next?" after every successful task
+    if (result?.success) await sendWhatNext(bot, chatId, userId);
 
     await logTask({
       userId, platform: 'telegram', task: intent.task,
-      status: result.success ? 'success' : 'failed',
-      errorMessage: result.error || null,
+      status: result?.success ? 'success' : 'failed',
+      errorMessage: result?.error || null,
     });
 
   } catch (err) {
