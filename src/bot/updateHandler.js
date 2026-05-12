@@ -117,20 +117,20 @@ const handleUpdate = async (bot, update) => {
   const lastTaskContext = await getLastTask(userId);
 
   if (session?.step === 'waiting_for_resize_dimensions' && msg.text) {
-    const { handleResizeDimensionsInput } = require('../tasks/imageResizer');
+    const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
   if (session?.step === 'waiting_for_resize_platform' && msg.text) {
-    const { handleResizeDimensionsInput } = require('../tasks/imageResizer');
+    const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
   if ((session?.step === 'waiting_for_resize_dimensions' ||
        session?.step === 'waiting_for_resize_platform') && msg.photo) {
-    const { imageResize } = require('../tasks/imageResizer');
+    const { imageResize } = require('../tasks/imageResize');
     await imageResize(bot, chatId, msg, {});
     return;
   }
@@ -140,7 +140,7 @@ const handleUpdate = async (bot, update) => {
     await bot.sendMessage(chatId, '⚙️ On it...');
     try {
       const result = await mergePDFs(bot, chatId, msg);
-      if (result?.success) await sendWhatNext(bot, chatId, userId);
+      if (result?.success && !result?.pending) await sendWhatNext(bot, chatId, userId);
     } catch (err) {
       console.error('❌ Merge failed:', err.message);
       await bot.sendMessage(chatId, '😕 Something went wrong. Please try again.');
@@ -195,7 +195,7 @@ const handleUpdate = async (bot, update) => {
     try {
       const result = await routeTask(bot, chatId, msg, intent);
       await setLastTask(userId, intent.task);
-      if (result?.success) await sendWhatNext(bot, chatId, userId);
+      if (result?.success && !result?.pending) await sendWhatNext(bot, chatId, userId);
       await logTask({
         userId, platform: 'telegram', task: intent.task,
         status: result?.success ? 'success' : 'failed',
@@ -215,7 +215,7 @@ const handleUpdate = async (bot, update) => {
 
     console.log(`📌 Intent: ${intent.task} | confidence: ${intent.confidence}`);
 
-    // ── FEATURE REQUEST ───────────────────────────────
+    // ── FEATURE REQUEST / SUGGESTION / UNKNOWN ──────────
     if (intent.task === 'feature_request') {
       const userText  = msg.text || msg.caption || describeMessage(msg);
       const response  = await featureRequestResponse(userText);
@@ -247,8 +247,8 @@ const handleUpdate = async (bot, update) => {
       return;
     }
 
-    // ── CONVERSATION ──────────────────────────────────
-    if (intent.task === 'converse') {
+    // ── CONVERSATION (also handles unknown/fallback) ────
+    if (intent.task === 'converse' || intent.task === 'unknown') {
       const userText = describeMessage(msg);
       await addMessage(userId, 'user', userText);
       const history  = await getHistory(userId);
@@ -267,7 +267,7 @@ const handleUpdate = async (bot, update) => {
     await addMessage(userId, 'assistant', `[completed: ${intent.task}]`);
 
     // Show "what next?" after every successful task
-    if (result?.success) await sendWhatNext(bot, chatId, userId);
+    if (result?.success && !result?.pending) await sendWhatNext(bot, chatId, userId);
 
     await logTask({
       userId, platform: 'telegram', task: intent.task,

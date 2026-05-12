@@ -195,14 +195,14 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
         `✅ Got PDF ${files.length}! Send more PDFs or type *"merge now"* to combine them.`,
         { parse_mode: 'Markdown' }
       );
-      return { success: true };
+      return { success: true, pending: true }; // still collecting PDFs
     }
 
     // User says merge now
     if (msg.text?.toLowerCase().includes('merge')) {
       if (session.files.length < 2) {
         await bot.sendMessage(chatId, '📄 I need at least 2 PDFs to merge. Send another PDF first.');
-        return { success: true };
+        return { success: true, pending: true };
       }
 
       await bot.sendMessage(chatId, `🔀 Merging ${session.files.length} PDFs...`);
@@ -238,11 +238,11 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
       '✅ Got PDF 1! Send the next PDF to merge.\n\nSend as many as you want, then type *"merge now"* when ready.',
       { parse_mode: 'Markdown' }
     );
-    return { success: true };
+    return { success: true, pending: true }; // still collecting
   }
 
   await bot.sendMessage(chatId, '📄 Send me the first PDF you want to merge!');
-  return { success: true };
+  return { success: true, pending: true }; // waiting for first file
 };
 
 // ─────────────────────────────────────────────────────────────

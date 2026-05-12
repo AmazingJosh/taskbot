@@ -144,7 +144,7 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
       '🖼 *Image Resize*\n\nSend me the image with the platform name or size in caption!\n\nExamples:\n• Photo + *"whatsapp dp"*\n• Photo + *"instagram post"*\n• Photo + *"1200x630"*',
       { parse_mode: 'Markdown' }
     );
-    return { success: true };
+    return { success: true, pending: true }; // not done yet — waiting for photo
   }
 
   // Upload photo first — we need it regardless
@@ -167,8 +167,9 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
     } catch (err) {
       console.error('❌ Resize failed:', err.message);
       await bot.sendMessage(chatId, `😕 Resize failed: ${err.message}`);
+      return { success: false };
     }
-    return { success: true };
+    return { success: true }; // truly done — file sent to user
   }
 
   // No caption or unrecognized caption — save photo, show platform buttons
@@ -185,7 +186,7 @@ const imageResize = async (bot, chatId, msg, params = {}) => {
     { parse_mode: 'Markdown', ...PLATFORM_KEYBOARD }
   );
 
-  return { success: true };
+  return { success: true, pending: true }; // not done yet — waiting for platform tap
 };
 
 /**
