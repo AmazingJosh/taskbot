@@ -1,6 +1,6 @@
 const ILovePDFApi = require('@ilovepdf/ilovepdf-nodejs');
-const { uploadFileFromTelegram, deleteFromCloudinary } = require('../utils/fileHelper');
-const { setSession, getSession, clearSession } = require('../utils/sessionStore');
+const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fileHelper');
+const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
 
 /**
  * PDF & Document Tools
