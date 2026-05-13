@@ -1,18 +1,15 @@
 const ILovePDFApi = require('@ilovepdf/ilovepdf-nodejs');
-const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fileHelper');
-const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
+const { uploadFileFromTelegram, deleteFromCloudinary } = require('../utils/fileHelper');
+const { setSession, getSession, clearSession } = require('../utils/sessionStore');
 
 /**
- * PDF & Document Tools — powered by ilovepdf API
+ * PDF & Document Tools
  */
 const getInstance = () => new ILovePDFApi(
   process.env.ILOVEPDF_PUBLIC_KEY,
   process.env.ILOVEPDF_SECRET_KEY
 );
 
-/**
- * Core processor
- */
 const processFile = async (fileUrl, taskName, options = {}) => {
   const instance = getInstance();
   const task = instance.newTask(taskName);
@@ -22,9 +19,6 @@ const processFile = async (fileUrl, taskName, options = {}) => {
   return await task.download();
 };
 
-/**
- * Get file URL from Telegram
- */
 const getFileUrl = async (msg) => {
   const doc = msg.document || msg.photo?.[msg.photo.length - 1];
   if (!doc) return null;
@@ -47,7 +41,7 @@ const compressPDF = async (bot, chatId, msg) => {
   const result = await processFile(file.url, 'compress');
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF compressed! File size reduced.',
+    caption: '✅ PDF compressed\\! File size reduced\\.',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `compressed_${msg.document.file_name}`, 
@@ -73,7 +67,7 @@ const pdfToWord = async (bot, chatId, msg) => {
   const result = await processFile(file.url, 'officepdf', { output_format: 'docx' });
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ Converted to Word! Ready to edit.',
+    caption: '✅ Converted to Word\\! Ready to edit\\.',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `${msg.document.file_name.replace('.pdf', '')}.docx`, 
@@ -85,7 +79,7 @@ const pdfToWord = async (bot, chatId, msg) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 3. WORD / EXCEL / PPT TO PDF
+// 3. OFFICE TO PDF
 // ─────────────────────────────────────────────────────────────
 const officeToPDF = async (bot, chatId, msg) => {
   const doc = msg.document;
@@ -104,7 +98,10 @@ const officeToPDF = async (bot, chatId, msg) => {
   ];
 
   if (!supportedTypes.includes(doc.mime_type)) {
-    await bot.sendMessage(chatId, '📄 I can convert Word \\(.docx\\), Excel \\(.xlsx\\) and PowerPoint \\(.pptx\\) files to PDF.');
+    await bot.sendMessage(chatId, 
+      '📄 I can convert Word \\(.docx\\), Excel \\(.xlsx\\) and PowerPoint \\(.pptx\\) files to PDF\\.', 
+      { parse_mode: 'MarkdownV2' }
+    );
     return { success: false, error: 'unsupported_type' };
   }
 
@@ -116,7 +113,7 @@ const officeToPDF = async (bot, chatId, msg) => {
   const originalName = doc.file_name.replace(/\.(docx|xlsx|pptx|doc|xls|ppt)$/i, '');
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ Converted to PDF!',
+    caption: '✅ Converted to PDF\\!',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `${originalName}.pdf`, 
@@ -142,7 +139,7 @@ const pdfToJPG = async (bot, chatId, msg) => {
   const result = await processFile(file.url, 'pdfjpg', { pdfjpg_mode: 'pages' });
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF converted to JPG images \\(zip file containing all pages\\)',
+    caption: '✅ PDF converted to JPG images \\(zip file containing all pages\\)\\.',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `${msg.document.file_name.replace('.pdf', '')}_images.zip`, 
@@ -154,7 +151,7 @@ const pdfToJPG = async (bot, chatId, msg) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 5. JPG / IMAGE TO PDF
+// 5. IMAGE TO PDF
 // ─────────────────────────────────────────────────────────────
 const imageToPDF = async (bot, chatId, msg) => {
   const photo = msg.photo?.[msg.photo.length - 1] || msg.document;
@@ -174,7 +171,7 @@ const imageToPDF = async (bot, chatId, msg) => {
   const result = await task.download();
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ Image converted to PDF!',
+    caption: '✅ Image converted to PDF\\!',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: 'converted.pdf', 
@@ -188,32 +185,32 @@ const imageToPDF = async (bot, chatId, msg) => {
 // ─────────────────────────────────────────────────────────────
 // 6. MERGE PDFs
 // ─────────────────────────────────────────────────────────────
-const mergePDFs = async (bot, chatId, msg, params = {}) => {
+const mergePDFs = async (bot, chatId, msg) => {
   const userId = msg.from.id;
   const doc = msg.document;
   const session = getSession(userId);
 
-  // Adding more files
   if (session?.step === 'waiting_for_merge_files') {
     if (doc?.mime_type === 'application/pdf') {
       const files = [...session.files, doc.file_id];
       setSession(userId, { ...session, files });
 
       await bot.sendMessage(chatId, 
-        `✅ Got PDF ${files.length}! Send more PDFs or type *merge now* to combine them.`,
+        `✅ Got PDF ${files.length}\\! Send more PDFs or type *merge now* to combine them\\.`,
         { parse_mode: 'MarkdownV2' }
       );
       return { success: true, pending: true };
     }
 
-    // User says merge now
     if (msg.text?.toLowerCase().includes('merge')) {
       if (session.files.length < 2) {
-        await bot.sendMessage(chatId, '📄 I need at least 2 PDFs to merge. Send another PDF first.');
+        await bot.sendMessage(chatId, '📄 I need at least 2 PDFs to merge\\. Send another PDF first\\.', 
+          { parse_mode: 'MarkdownV2' });
         return { success: true, pending: true };
       }
 
-      await bot.sendMessage(chatId, `🔀 Merging ${session.files.length} PDFs...`);
+      await bot.sendMessage(chatId, `🔀 Merging ${session.files.length} PDFs\\.\\.\\.`, 
+        { parse_mode: 'MarkdownV2' });
       
       const instance = getInstance();
       const task = instance.newTask('merge');
@@ -229,7 +226,7 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
       const result = await task.download();
 
       await bot.sendDocument(chatId, Buffer.from(result), {
-        caption: `✅ ${session.files.length} PDFs merged into one!`,
+        caption: `✅ ${session.files.length} PDFs merged into one\\!`,
         parse_mode: 'MarkdownV2'
       }, { 
         filename: 'merged.pdf', 
@@ -241,17 +238,17 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
     }
   }
 
-  // Start new merge flow
   if (doc?.mime_type === 'application/pdf') {
     setSession(userId, { step: 'waiting_for_merge_files', files: [doc.file_id] });
     await bot.sendMessage(chatId, 
-      '✅ Got PDF 1! Send the next PDF to merge.\n\nSend as many as you want, then type *merge now* when ready.',
+      '✅ Got PDF 1\\! Send the next PDF to merge\\.\n\nSend as many as you want, then type *merge now* when ready\\.',
       { parse_mode: 'MarkdownV2' }
     );
     return { success: true, pending: true };
   }
 
-  await bot.sendMessage(chatId, '📄 Send me the first PDF you want to merge!');
+  await bot.sendMessage(chatId, '📄 Send me the first PDF you want to merge\\!', 
+    { parse_mode: 'MarkdownV2' });
   return { success: true, pending: true };
 };
 
@@ -260,17 +257,17 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
 // ─────────────────────────────────────────────────────────────
 const splitPDF = async (bot, chatId, msg) => {
   if (!msg.document || msg.document.mime_type !== 'application/pdf') {
-    await bot.sendMessage(chatId, '📄 Please send a PDF file to split.');
+    await bot.sendMessage(chatId, '📄 Please send a PDF file to split\\.');
     return { success: false, error: 'no_pdf' };
   }
 
-  await bot.sendMessage(chatId, '✂️ Splitting PDF into individual pages...');
+  await bot.sendMessage(chatId, '✂️ Splitting PDF into individual pages\\.\\.\\.');
   
   const file = await getFileUrl(msg);
   const result = await processFile(file.url, 'split', { split_mode: 'pages' });
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF split! Each page is now a separate PDF \\(zip file\\).',
+    caption: '✅ PDF split\\! Each page is now a separate PDF \\(zip file\\)\\.',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `split_${msg.document.file_name}`, 
@@ -286,17 +283,17 @@ const splitPDF = async (bot, chatId, msg) => {
 // ─────────────────────────────────────────────────────────────
 const unlockPDF = async (bot, chatId, msg) => {
   if (!msg.document || msg.document.mime_type !== 'application/pdf') {
-    await bot.sendMessage(chatId, '📄 Please send the password-protected PDF to unlock.');
+    await bot.sendMessage(chatId, '📄 Please send the password-protected PDF to unlock\\.');
     return { success: false, error: 'no_pdf' };
   }
 
-  await bot.sendMessage(chatId, '🔓 Unlocking PDF...');
+  await bot.sendMessage(chatId, '🔓 Unlocking PDF\\.\\.\\.');
   
   const file = await getFileUrl(msg);
   const result = await processFile(file.url, 'unlock');
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF unlocked! No more password needed.',
+    caption: '✅ PDF unlocked\\! No more password needed\\.',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `unlocked_${msg.document.file_name}`, 
@@ -312,17 +309,17 @@ const unlockPDF = async (bot, chatId, msg) => {
 // ─────────────────────────────────────────────────────────────
 const repairPDF = async (bot, chatId, msg) => {
   if (!msg.document || msg.document.mime_type !== 'application/pdf') {
-    await bot.sendMessage(chatId, '📄 Please send the damaged PDF to repair.');
+    await bot.sendMessage(chatId, '📄 Please send the damaged PDF to repair\\.');
     return { success: false, error: 'no_pdf' };
   }
 
-  await bot.sendMessage(chatId, '🔧 Repairing PDF...');
+  await bot.sendMessage(chatId, '🔧 Repairing PDF\\.\\.\\.');
   
   const file = await getFileUrl(msg);
   const result = await processFile(file.url, 'repair');
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF repaired!',
+    caption: '✅ PDF repaired\\!',
     parse_mode: 'MarkdownV2'
   }, { 
     filename: `repaired_${msg.document.file_name}`, 
