@@ -3,15 +3,12 @@ const { uploadFileFromTelegram, deleteFromCloudinary } = require('../helpers/fil
 const { setSession, getSession, clearSession } = require('../helpers/sessionStore');
 
 /**
- * PDF & Document Tools — powered by ilovepdf API
- * Verified task names from official docs:
- * compress, merge, split, pdfjpg, imagepdf, officepdf, unlock, repair, rotate, protect, watermark
+ * PDF Tools — powered by ilovepdf API
  * 
- * All tools follow the same 4-step flow:
- * 1. Start task
- * 2. Add file via URL
- * 3. Process
- * 4. Download → send to user
+ * Verified supported tasks:
+ * compress, merge, split, officepdf, pdfjpg, imagepdf, unlock, repair
+ * 
+ * NOT supported by API: pdf to word, pdf to excel, pdf to powerpoint
  */
 
 const getInstance = () => new ILovePDFApi(
@@ -20,8 +17,7 @@ const getInstance = () => new ILovePDFApi(
 );
 
 /**
- * Core processor — handles any single-file ilovepdf task.
- * Returns result as Buffer.
+ * Core processor — runs any ilovepdf task on a single file URL
  */
 const processFile = async (fileUrl, taskName, options = {}) => {
   const instance = getInstance();
@@ -33,8 +29,7 @@ const processFile = async (fileUrl, taskName, options = {}) => {
 };
 
 /**
- * Get file URL from Telegram message.
- * Works for documents, photos, audio etc.
+ * Get file from Telegram message and upload to Cloudinary
  */
 const getFileUrl = async (msg) => {
   const doc = msg.document || msg.photo?.[msg.photo.length - 1];
@@ -58,7 +53,7 @@ const compressPDF = async (bot, chatId, msg) => {
   const result = await processFile(file.url, 'compress');
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF compressed! File size reduced.',
+    caption: `✅ PDF compressed and ready!`,
   }, { filename: `compressed_${msg.document.file_name}`, contentType: 'application/pdf' });
 
   await deleteFromCloudinary(file.publicId, file.resourceType);
@@ -66,18 +61,18 @@ const compressPDF = async (bot, chatId, msg) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 2. PDF TO WORD — Not supported by ilovepdf API free tier
+// 2. PDF TO WORD — NOT SUPPORTED BY API
 // ─────────────────────────────────────────────────────────────
 const pdfToWord = async (bot, chatId, msg) => {
   await bot.sendMessage(
     chatId,
-    "😕 PDF to Word conversion isn't available yet — we're working on adding it soon! 🔜\n\nWhat I can do with PDFs right now:\n• Compress PDF\n• Convert Word/Excel/PPT to PDF\n• PDF to JPG\n• Merge, Split, Unlock, Repair"
+    "😕 PDF to Word isn't available yet — we're working on it! 🔜\n\nWhat I can do with PDFs right now:\n• Compress PDF\n• Convert Word/Excel/PPT to PDF\n• PDF to JPG images\n• Merge, Split, Unlock, Repair"
   );
   return { success: true, pending: true };
 };
 
 // ─────────────────────────────────────────────────────────────
-// 3. WORD / EXCEL / PPT TO PDF
+// 3. OFFICE TO PDF (Word, Excel, PowerPoint → PDF)
 // ─────────────────────────────────────────────────────────────
 const officeToPDF = async (bot, chatId, msg) => {
   const doc = msg.document;
@@ -119,17 +114,17 @@ const officeToPDF = async (bot, chatId, msg) => {
 // ─────────────────────────────────────────────────────────────
 const pdfToJPG = async (bot, chatId, msg) => {
   if (!msg.document || msg.document.mime_type !== 'application/pdf') {
-    await bot.sendMessage(chatId, '📄 Please send a PDF file to convert to JPG.');
+    await bot.sendMessage(chatId, '📄 Please send a PDF file to convert to images.');
     return { success: false, error: 'no_pdf' };
   }
 
-  await bot.sendMessage(chatId, '🖼 Converting PDF pages to JPG images...');
+  await bot.sendMessage(chatId, '🖼 Converting PDF to JPG images...');
 
   const file = await getFileUrl(msg);
   const result = await processFile(file.url, 'pdfjpg', { pdfjpg_mode: 'pages' });
 
   await bot.sendDocument(chatId, Buffer.from(result), {
-    caption: '✅ PDF converted to JPG images! (zip file containing all pages)',
+    caption: '✅ PDF converted to JPG images! (zip file with all pages)',
   }, { filename: `${msg.document.file_name.replace('.pdf', '')}_images.zip`, contentType: 'application/zip' });
 
   await deleteFromCloudinary(file.publicId, file.resourceType);
@@ -137,7 +132,7 @@ const pdfToJPG = async (bot, chatId, msg) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 5. JPG / IMAGE TO PDF
+// 5. IMAGE TO PDF
 // ─────────────────────────────────────────────────────────────
 const imageToPDF = async (bot, chatId, msg) => {
   const photo = msg.photo?.[msg.photo.length - 1] || msg.document;
@@ -150,6 +145,7 @@ const imageToPDF = async (bot, chatId, msg) => {
   await bot.sendMessage(chatId, '📄 Converting image to PDF...');
 
   const upload = await uploadFileFromTelegram(photo.file_id, 'taskbot/pdfs');
+
   const instance = getInstance();
   const task = instance.newTask('imagepdf');
   await task.start();
@@ -166,45 +162,48 @@ const imageToPDF = async (bot, chatId, msg) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 6. MERGE PDFs (multi-step session flow)
+// 6. MERGE PDFs — multi-step session flow
 // ─────────────────────────────────────────────────────────────
-const mergePDFs = async (bot, chatId, msg, params = {}) => {
+const mergePDFs = async (bot, chatId, msg) => {
   const userId = msg.from.id;
   const doc = msg.document;
-  const session = getSession(userId);
 
-  // User is adding more files to merge
+  // ── Step 1: Check if we're already collecting files ──────
+  const session = await getSession(userId); // MUST await
+
   if (session?.step === 'waiting_for_merge_files') {
+
+    // User sent another PDF — add it
     if (doc?.mime_type === 'application/pdf') {
-      const files = [...session.files, doc.file_id];
-      setSession(userId, { ...session, files });
+      const updatedFiles = [...session.files, doc.file_id];
+      await setSession(userId, { step: 'waiting_for_merge_files', files: updatedFiles });
 
       await bot.sendMessage(
         chatId,
-        `✅ Got PDF ${files.length}! Send more PDFs or type "merge now" to combine them.`,
-        {}
+        `✅ Got PDF ${updatedFiles.length}! Send more PDFs or type "merge now" to combine them.`
       );
-      return { success: true, pending: true }; // still collecting PDFs
+      return { success: true, pending: true };
     }
 
-    // User says merge now
+    // User typed "merge now" — execute the merge
     if (msg.text?.toLowerCase().includes('merge')) {
       if (session.files.length < 2) {
-        await bot.sendMessage(chatId, '📄 I need at least 2 PDFs to merge. Send another PDF first.');
+        await bot.sendMessage(chatId, '📄 I need at least 2 PDFs to merge. Please send another PDF first.');
         return { success: true, pending: true };
       }
 
-      await bot.sendMessage(chatId, `🔀 Merging ${session.files.length} PDFs...`);
+      await bot.sendMessage(chatId, `🔀 Merging ${session.files.length} PDFs... give me a moment!`);
 
       const instance = getInstance();
       const task = instance.newTask('merge');
       await task.start();
 
-      // Upload and add all files
+      // Upload and add all collected files
+      const uploads = [];
       for (const fileId of session.files) {
         const upload = await uploadFileFromTelegram(fileId, 'taskbot/pdfs');
         await task.addFile(upload.url);
-        await deleteFromCloudinary(upload.publicId, upload.resourceType);
+        uploads.push(upload);
       }
 
       await task.process();
@@ -214,30 +213,42 @@ const mergePDFs = async (bot, chatId, msg, params = {}) => {
         caption: `✅ ${session.files.length} PDFs merged into one!`,
       }, { filename: 'merged.pdf', contentType: 'application/pdf' });
 
-      clearSession(userId);
+      // Cleanup all uploaded files
+      for (const upload of uploads) {
+        await deleteFromCloudinary(upload.publicId, upload.resourceType);
+      }
+
+      await clearSession(userId);
       return { success: true };
     }
-  }
 
-  // Start merge flow — first PDF
-  if (doc?.mime_type === 'application/pdf') {
-    setSession(userId, { step: 'waiting_for_merge_files', files: [doc.file_id] });
+    // User sent something else — remind them what to do
     await bot.sendMessage(
       chatId,
-      '✅ Got PDF 1! Send the next PDF to merge.\n\nSend as many as you want, then type "merge now" when ready.',
-      { parse_mode: 'Markdown' }
+      `📎 I'm collecting PDFs to merge. Send more PDFs or type "merge now" to combine the ${session.files.length} PDF(s) you've sent so far.`
     );
-    return { success: true, pending: true }; // still collecting
+    return { success: true, pending: true };
   }
 
+  // ── Step 0: Start merge flow — need first PDF ─────────────
+  if (doc?.mime_type === 'application/pdf') {
+    await setSession(userId, { step: 'waiting_for_merge_files', files: [doc.file_id] });
+    await bot.sendMessage(
+      chatId,
+      '✅ Got PDF 1! Send the next PDF to merge.\n\nSend as many as you want, then type "merge now" when ready.'
+    );
+    return { success: true, pending: true };
+  }
+
+  // No PDF sent
   await bot.sendMessage(chatId, '📄 Send me the first PDF you want to merge!');
-  return { success: true, pending: true }; // waiting for first file
+  return { success: true, pending: true };
 };
 
 // ─────────────────────────────────────────────────────────────
 // 7. SPLIT PDF
 // ─────────────────────────────────────────────────────────────
-const splitPDF = async (bot, chatId, msg, params = {}) => {
+const splitPDF = async (bot, chatId, msg) => {
   if (!msg.document || msg.document.mime_type !== 'application/pdf') {
     await bot.sendMessage(chatId, '📄 Please send a PDF file to split.');
     return { success: false, error: 'no_pdf' };
