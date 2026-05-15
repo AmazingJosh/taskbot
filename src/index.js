@@ -10,6 +10,26 @@ app.use(express.json());
 // ── Health check ──────────────────────────────────────
 app.get("/", (req, res) => res.json({ status: "TaskBot is alive 🤖" }));
 
+app.get("/test-pdf-tasks", async (req, res) => {
+  const ILovePDFApi = require('@ilovepdf/ilovepdf-nodejs');
+  const instance = new ILovePDFApi(
+    process.env.ILOVEPDF_PUBLIC_KEY,
+    process.env.ILOVEPDF_SECRET_KEY
+  );
+  const results = {};
+  const tasks = ['compress', 'pdfjpg', 'imagepdf', 'merge', 'split', 'unlock', 'repair', 'officepdf'];
+  for (const taskName of tasks) {
+    try {
+      const task = instance.newTask(taskName);
+      await task.start();
+      results[taskName] = '✅ started ok';
+    } catch(e) {
+      results[taskName] = `❌ ${e.message}`;
+    }
+  }
+  res.json(results);
+});
+
 app.get("/test-sharp", async (req, res) => {
   try {
     console.log("🔧 Sharp test starting...");

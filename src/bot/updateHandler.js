@@ -117,20 +117,20 @@ const handleUpdate = async (bot, update) => {
   const lastTaskContext = await getLastTask(userId);
 
   if (session?.step === 'waiting_for_resize_dimensions' && msg.text) {
-    const { handleResizeDimensionsInput } = require('../tasks/imageResizer');
+    const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
   if (session?.step === 'waiting_for_resize_platform' && msg.text) {
-    const { handleResizeDimensionsInput } = require('../tasks/imageResizer');
+    const { handleResizeDimensionsInput } = require('../tasks/imageResize');
     await handleResizeDimensionsInput(bot, chatId, userId, msg.text);
     return;
   }
 
   if ((session?.step === 'waiting_for_resize_dimensions' ||
        session?.step === 'waiting_for_resize_platform') && msg.photo) {
-    const { imageResize } = require('../tasks/imageResizer');
+    const { imageResize } = require('../tasks/imageResize');
     await imageResize(bot, chatId, msg, {});
     return;
   }

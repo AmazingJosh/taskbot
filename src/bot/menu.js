@@ -8,7 +8,7 @@
 // MESSAGES
 // ─────────────────────────────────────────────────────────────
 
-const WELCOME_MESSAGE = `🌟 *Welcome to Taskify — your one-tap auto bot!*
+const WELCOME_MESSAGE = `🌟 *Welcome to LifeBot — Life Made Easy!*
 
 Hey {name}! 👋
 
@@ -28,8 +28,8 @@ _🍳 And trust me... what's cooking in the kitchen is going to blow your mind. 
 
 👇 *Tap a task below to get started!*`;
 
-const MENU_MESSAGE = `🌟 *Taskify — your one-tap auto bot*
-_.
+const MENU_MESSAGE = `🌟 *LifeBot — Life Made Easy*
+_One tap. Task done. Simple._
 
 👇 What are we doing today?`;
 
@@ -56,7 +56,6 @@ const MAIN_MENU = {
         { text: "🌀 Blur Background",   callback_data: "task_background_blur"    },
       ],
       [
-        { text: "📐 Resize Image",      callback_data: "task_image_resize"       },
         { text: "📄 PDF Tools",         callback_data: "menu_docs"               },
       ],
       [
@@ -71,7 +70,6 @@ const DOCS_MENU = {
     inline_keyboard: [
       [
         { text: "📦 Compress PDF",         callback_data: "task_pdf_compress"   },
-        { text: "📝 PDF → Word",           callback_data: "task_pdf_to_word"    },
       ],
       [
         { text: "📄 Word/Excel/PPT → PDF", callback_data: "task_office_to_pdf"  },
@@ -102,9 +100,8 @@ const DOCS_MENU = {
 const TASK_PROMPTS = {
   background_removal: "✂️ *Remove Background*\n\nSend me the photo!",
   background_blur:    "🌀 *Blur Background*\n\nSend me the photo and I'll blur the background keeping you sharp!",
-  image_resize: '📐 *Resize Image*\n\nSend me the image!\n\nYou can:\n• Add dimensions in caption: "586x342"\n• Or name a platform: "instagram post", "passport", "linkedin banner"',
+  image_resize: '📐 *Resize Image*\n\nSend me the image!\n\nAdd the size in caption:\n• "whatsapp dp"\n• "instagram post"\n• "passport"\n• "1200x630" (custom size)',
   pdf_compress:       "📦 *Compress PDF*\n\nSend me the PDF file!",
-  pdf_to_word:        "📝 *PDF → Word*\n\nSend me the PDF to convert to an editable Word document!",
   office_to_pdf:      "📄 *Office → PDF*\n\nSend me a Word (.docx), Excel (.xlsx) or PowerPoint (.pptx) file!",
   pdf_to_jpg:         "🖼 *PDF → JPG*\n\nSend me the PDF to convert to images!",
   image_to_pdf:       "📄 *Image → PDF*\n\nSend me the image or photo to convert to PDF!",
