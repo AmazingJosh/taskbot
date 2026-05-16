@@ -21,13 +21,9 @@ Here's what I can do for you *right now:*
 ✂️ Remove image backgrounds
 🌀 Blur backgrounds instantly 
 📐 Resize images for any platform
-/**
- *📦 Compress oversized PDFs
- *📝 Convert PDF ↔ Word, JPG & more
- *🔀 Merge, split, unlock & repair PDFs
- */
+with more powerful features coming soon...
 
-_🍳 And trust me... what's cooking in the kitchen is going to blow your mind. Stay close._
+_🍳 yes, trust me... what's cooking in the kitchen is going to blow your mind. Stay close._
 
 👇 *Tap a task below to get started!*`;
 
